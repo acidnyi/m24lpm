@@ -36,5 +36,5 @@ for idx, lap in laps.iterrows():
 
     tel = lap.get_car_data()
 
-    filename = f"{driver}_lap_{lap_no:03d}.csv"
+    filename = f"{driver}_lap_{lap_no:02d}.csv"
     tel.to_csv(os.path.join(os.path.join(OUTDIR, "telemetry_raw"), filename), index=False)
