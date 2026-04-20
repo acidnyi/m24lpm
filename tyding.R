@@ -92,5 +92,59 @@ summary(weather)
 
 laps <- read_csv("data/laps_raw.csv")
 laps
+
 view(laps)
+
 glimpse(laps)
+
+laps %>% summary
+
+# There are only 4 laps data that were artificially created
+# So, we decided remove them
+laps %>% select(everything()) %>%
+  filter(FastF1Generated == T)
+
+laps %<>% select(everything()) %>%
+  filter(FastF1Generated != T)
+
+laps$FastF1Generated <- NULL
+
+laps
+
+# Deleted Laps
+# There are 5 laps of 1233 that were deleted due to the rule break out
+# To not train the model on the invalid laps, and due to there are small amount of these invalid laps
+# we decided to remove them
+
+laps %>% select(Deleted) %>%
+  filter(Deleted==T)
+
+laps %<>% select(everything()) %>%
+  filter(Deleted == F)
+
+laps$Deleted <- NULL
+laps$DeletedReason <- NULL
+
+summary(laps)
+
+# TIME features
+# convert them to the seconds
+# NOTE: some values are the time in seconds from the start of the Session, not the Race for example Time
+laps %<>% select(everything()) %>%
+  mutate(
+    across(
+      contains("Time"),
+      ~map_dbl(., convert_time),
+      .names = "{.col}"
+    )
+  )
+
+summary(laps)
+
+# COMPOUND TYPE
+# There are 3 types on the tyres
+# Lets split them into each column
+
+laps %>% select(Compound) %>%
+  unique()
+
