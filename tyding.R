@@ -253,3 +253,24 @@ range(weather$Time)
 range(laps$LapStartTime)
 range(laps$Time)
 
+weather_join <- weather %>%
+  rename(weather_time = Time)
+
+laps_join <- laps %>%
+  mutate(lap_id = row_number())
+
+data <- laps_join %>%
+  left_join(
+    weather_join,
+    by = join_by(LapStartTime >= weather_time)
+  ) %>%
+  group_by(lap_id) %>%
+  slice_max(weather_time, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+data$lap_id <- NULL
+
+data
+
+write.table(data, file="data.csv")
+
