@@ -256,6 +256,8 @@ range(laps$Time)
 weather_join <- weather %>%
   rename(weather_time = Time)
 
+weather_join
+
 laps_join <- laps %>%
   mutate(lap_id = row_number())
 
@@ -272,5 +274,4 @@ data$lap_id <- NULL
 
 data
 
-write.table(data, file="data.csv")
-
+write_csv(data, "data.csv")
