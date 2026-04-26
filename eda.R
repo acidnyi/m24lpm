@@ -293,7 +293,7 @@ ggplot(data, aes(x = Driver, fill = top10)) +
 ggplot(data, aes(x = Stint, fill = top10)) +
   geom_bar(position = "fill")
 
-# Ok
+# There are very few observation of the soft tyres
 ggplot(data, aes(x = Compound, fill = top10)) +
   geom_bar(position = "fill")
 
@@ -308,3 +308,64 @@ ggplot(data, aes(x = Team, fill = top10)) +
 # Not useful
 ggplot(data, aes(x = yellow_flag, fill = top10)) +
   geom_bar(position = "fill")
+
+# Feature set
+# SpeedI2
+# TyreLife
+# Stint
+# SpeedI1
+# SpeedFL - need to test on the models
+# SpeedST - need to test on the models
+# Compound
+
+# SCENARIO 1
+# To compare the models we will use the one feature set:
+# SpeedI2
+# TyreLife
+# Stint
+# SpeedI1
+# SpeedFL
+# Compound 
+# SpeedST was removed due to the a lot of outliers (60), unstable results in normality check 
+
+data_sc1 <- data %>% select(SpeedI2, TyreLife, Stint, SpeedI1, SpeedFL, Compound, top10)
+
+library(rsample)
+
+set.seed(13)
+
+split <- initial_split(data_sc1, prop = 0.8, strata = top10)
+
+train_sc1 <- training(split)
+test_sc1 <- testing(split)
+
+# Check the proportions of the top10 in the both sets
+train_sc1
+summary(train_sc1)
+
+test_sc1
+summary(test_sc1)
+
+# Logistic Regression
+# Independence: repeated laps per driver is a limitation of the dataset
+# Colinearity: no severe colinearity
+# Outliers: ??
+# Linearity: some predictors shown non-linear relationship with a target 
+
+lg_model <- glm(data=train_sc1,
+  family = binomial,
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound
+)
+
+summary(lg_model)
+
+lg_probs <- predict(lg_model, newdata = test_sc1, type = "response")
+
+# using standard threshold of 0.5 for the beginning
+lg_preds <- ifelse(lg_probs > 0.5, T, F)
+
+lg_res <- table(predicted = lg_preds, actual = test_sc1$top10)
+
+library(caret)
+
+confusionMatrix(factor(lg_preds), factor(test_sc1$top10))
