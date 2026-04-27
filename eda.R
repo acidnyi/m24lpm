@@ -328,20 +328,28 @@ ggplot(data, aes(x = yellow_flag, fill = top10)) +
 # Compound 
 # SpeedST was removed due to the a lot of outliers (60), unstable results in normality check 
 
-data_sc1 <- data %>% select(SpeedI2, TyreLife, Stint, SpeedI1, SpeedFL, Compound, top10)
+data_sc1 <- data %>% select(SpeedI1, SpeedI2, SpeedFL, TyreLife, Stint, Compound, top10)
 
+# Train/Val/Test sets
 library(rsample)
 
 set.seed(13)
 
 split <- initial_split(data_sc1, prop = 0.8, strata = top10)
 
-train_sc1 <- training(split)
+train_val_sc1 <- training(split)
 test_sc1 <- testing(split)
+
+val_split <- initial_split(train_val_sc1, prop = 0.75, strata = top10)
+train_sc1 <- training(val_split)
+val_sc1 <- testing(val_split)
 
 # Check the proportions of the top10 in the both sets
 train_sc1
 summary(train_sc1)
+
+val_sc1
+summary(val_sc1)
 
 test_sc1
 summary(test_sc1)
@@ -351,6 +359,8 @@ summary(test_sc1)
 # Colinearity: no severe colinearity
 # Outliers: ??
 # Linearity: some predictors shown non-linear relationship with a target 
+# Sample size: 708 lap-level observations with the 6 parameters + dummy encodings of the Stint and Compound
+# is enough for fitting a logistic regression
 
 lg_model <- glm(data=train_sc1,
   family = binomial,
@@ -359,13 +369,54 @@ lg_model <- glm(data=train_sc1,
 
 summary(lg_model)
 
+# Threshold tuning
+thresholds <- seq(0.05, 0.95, by=0.05)
+
+lg_val_probs <- predict(lg_model, newdata = val_sc1, type="response")
+
+results <- lapply(thresholds, function(t) {
+  
+  pred <- ifelse(lg_val_probs >= t, TRUE, FALSE)
+  actual <- val_sc1$top10
+  
+  TP <- sum(pred == TRUE & actual == TRUE)
+  TN <- sum(pred == FALSE & actual == FALSE)
+  FP <- sum(pred == TRUE & actual == FALSE)
+  FN <- sum(pred == FALSE & actual == TRUE)
+  
+  sensitivity <- TP / (TP + FN)
+  specificity <- TN / (TN + FP)
+  
+  data.frame(
+    threshold = t,
+    sensitivity = sensitivity,
+    specificity = specificity,
+    balanced_accuracy = (sensitivity + specificity) / 2
+  )
+})
+
+results <- bind_rows(results)
+
+# Best threshold is 0.7 based on the balanced accuracy, but in our case
+# finding laps in top 10 is more important than finding laps outside top 10.
+# So, sensitivity is considered as more important metric, than specificity, so
+# to keep the sensitivity high, the 0.65 threshold should be used, based on the balanced accuracy
+# and sensitivity
+results
+
+# Testing
+
 lg_probs <- predict(lg_model, newdata = test_sc1, type = "response")
 
-# using standard threshold of 0.5 for the beginning
-lg_preds <- ifelse(lg_probs > 0.5, T, F)
+# use the threshold based on the threshold tuning
+lg_preds <- ifelse(lg_probs > 0.65, T, F)
 
-lg_res <- table(predicted = lg_preds, actual = test_sc1$top10)
+# use the standard threshold of 0.5 for comparison
+lg_st_preds <- ifelse(lg_probs > 0.5, T, F)
 
 library(caret)
 
-confusionMatrix(factor(lg_preds), factor(test_sc1$top10))
+confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
+
+confusionMatrix(factor(lg_st_preds), factor(test_sc1$top10), positive = "TRUE")
+
