@@ -335,10 +335,14 @@ library(rsample)
 
 set.seed(13)
 
+data_sc1$top10 <- as.factor(data_sc1$top10)
+
 split <- initial_split(data_sc1, prop = 0.8, strata = top10)
 
 train_val_sc1 <- training(split)
 test_sc1 <- testing(split)
+
+set.seed(13)
 
 val_split <- initial_split(train_val_sc1, prop = 0.75, strata = top10)
 train_sc1 <- training(val_split)
@@ -397,19 +401,14 @@ results <- lapply(thresholds, function(t) {
 
 results <- bind_rows(results)
 
-# Best threshold is 0.7 based on the balanced accuracy, but in our case
-# finding laps in top 10 is more important than finding laps outside top 10.
-# So, sensitivity is considered as more important metric, than specificity, so
-# to keep the sensitivity high, the 0.65 threshold should be used, based on the balanced accuracy
-# and sensitivity
-results
+results %>% arrange(desc(balanced_accuracy))
 
 # Testing
 
 lg_probs <- predict(lg_model, newdata = test_sc1, type = "response")
 
 # use the threshold based on the threshold tuning
-lg_preds <- ifelse(lg_probs > 0.65, T, F)
+lg_preds <- ifelse(lg_probs > 0.6, T, F)
 
 # use the standard threshold of 0.5 for comparison
 lg_st_preds <- ifelse(lg_probs > 0.5, T, F)
@@ -422,7 +421,7 @@ confusionMatrix(factor(lg_st_preds), factor(test_sc1$top10), positive = "TRUE")
 
 # However the 0.65 threshold showing a better specificity and balanced accuracy,
 # as mentioned before finding laps in top 10 is more important, so sensitivity playing a crucial role, and 
-# 0.5 threshold shows 92% against 81% of 0.65 threshold. So, the threshold of 0.5 is more suitable for the 
+# 0.5 threshold shows 92% against 84% of 0.6 threshold. So, the threshold of 0.5 is more suitable for the 
 # our goal.
 
 # Random Forest
@@ -431,5 +430,79 @@ confusionMatrix(factor(lg_st_preds), factor(test_sc1$top10), positive = "TRUE")
 # Sample size: 708 lap-level observations with the 6 parameters + dummy encodings of the Stint and Compound
 # must be enough for fitting a random forest
 
+library(randomForest)
+set.seed(13)
 
+# Parameter tuning
+# for the random forest in our case will be enough to tune only the 
+# ntree, mtry, nodesize
+# maxnodes are additional control of the tree depth, but our dataset is not
+# that big and there are not many parametrs, so nodesize must be enough
 
+rf_grid <- expand.grid(
+  ntree = seq(100, 500, 100),
+  mtry = seq(2, 5, 1),
+  nodesize = seq(3, 10, 1)
+)
+
+rf_results <- lapply(1:nrow(rf_grid), function(i) {
+  # to ensure reproducebility, alongside randomness during model building
+  set.seed(13 + i)
+  
+  model <- randomForest(
+    top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
+    data = train_sc1,
+    ntree = rf_grid$ntree[i],
+    mtry = rf_grid$mtry[i],
+    nodesize = rf_grid$nodesize[i],
+    replace = TRUE,
+    importance = TRUE
+  )
+  
+  pred <- predict(model, newdata = val_sc1)
+  actual <- val_sc1$top10
+  
+  TP <- sum(pred == TRUE & actual == TRUE)
+  TN <- sum(pred == FALSE & actual == FALSE)
+  FP <- sum(pred == TRUE & actual == FALSE)
+  FN <- sum(pred == FALSE & actual == TRUE)
+  
+  sensitivity <- TP / (TP + FN)
+  specificity <- TN / (TN + FP)
+  
+  data.frame(
+    ntree = rf_grid$ntree[i],
+    mtry = rf_grid$mtry[i],
+    nodesize = rf_grid$nodesize[i],
+    sensitivity = sensitivity,
+    specificity = specificity,
+    balanced_accuracy = (sensitivity + specificity) / 2
+  )
+})
+
+rf_results <- bind_rows(rf_results)
+
+rf_results %>%
+  arrange(desc(balanced_accuracy))
+
+# find the number of the row with the best accuracy to get the number of the seed
+# in our situation its 16
+rf_results
+
+# Testing
+
+set.seed(13 + 16)
+
+rf_model <- randomForest(
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
+  data = train_sc1,
+  ntree = 100,
+  mtry = 5,
+  nodesize = 3,
+  replace = TRUE,
+  importance = TRUE
+)
+
+rf_preds <- predict(rf_model, newdata = test_sc1)
+
+confusionMatrix(rf_preds, test_sc1$top10, positive = "TRUE")
