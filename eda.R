@@ -506,3 +506,162 @@ rf_model <- randomForest(
 rf_preds <- predict(rf_model, newdata = test_sc1)
 
 confusionMatrix(rf_preds, test_sc1$top10, positive = "TRUE")
+
+# Logistic Regression
+# Independence: repeated laps per driver is a limitation of the dataset
+# Colinearity: no severe colinearity
+# Outliers: ??
+# Feature scaling: numeric features will be scaled
+# Linearity: some predictors shown non-linear relationship with a target 
+# Sample size: 708 lap-level observations with the 6 parameters + dummy encodings of the Stint and Compound
+# is enough for fitting a svm
+
+# Feature scaling
+
+num_features <- c("SpeedI2", "SpeedI1", "SpeedFL", "TyreLife")
+
+train_means <- train_sc1 %>%
+  summarise(
+    across(
+      where(is.numeric),
+      mean,
+      na.rm = T
+    )
+  )
+
+train_sds <- train_sc1 %>%
+  summarise(
+    across(
+      where(is.numeric),
+      sd,
+      na.rm = T
+    )
+  )
+
+scale <- function(data, means, sds, features) {
+  scaled <- data
+  
+  for (f in features) {
+    scaled[[f]] <- (data[[f]] - means[[f]]) / sds[[f]]
+  }
+  
+  scaled
+}
+
+# scale all sets based on the train set, to prevent leakage
+train_svm <- scale(train_sc1, train_means, train_sds, num_features)
+val_svm <- scale(val_sc1, train_means, train_sds, num_features)
+test_svm <- scale(test_sc1, train_means, train_sds, num_features)
+
+# Parameter Tuning
+library(e1071)
+set.seed(13)
+
+svm_grid <- expand.grid(
+  cost = seq(0.5, 10, 0.5),
+  gamma = seq(0.005, 1, 0.05)
+)
+
+svm_grid
+
+svm_results <- lapply(1:nrow(svm_grid), function(i) {
+
+   model <- svm(
+    top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
+    data = train_svm,
+    kernel = "radial",
+    cost = svm_grid$cost[i],
+    gamma = svm_grid$gamma[i],
+  )
+  
+  pred <- predict(model, newdata = val_svm)
+  actual <- val_svm$top10
+  
+  TP <- sum(pred == TRUE & actual == TRUE)
+  TN <- sum(pred == FALSE & actual == FALSE)
+  FP <- sum(pred == TRUE & actual == FALSE)
+  FN <- sum(pred == FALSE & actual == TRUE)
+  
+  sensitivity <- TP / (TP + FN)
+  specificity <- TN / (TN + FP)
+  
+  data.frame(
+    cost = svm_grid$cost[i],
+    gamma = svm_grid$gamma[i],
+    sensitivity = sensitivity,
+    specificity = specificity,
+    balanced_accuracy = (sensitivity + specificity) / 2
+  )
+})
+
+svm_results <- bind_rows(svm_results)
+
+svm_results %>%
+  arrange(desc(balanced_accuracy))
+
+# Testing
+svm_model <- svm(
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
+  data = train_svm,
+  kernel = "radial",
+  cost = 9,
+  gamma = 0.955,
+  probability = TRUE
+)
+
+svm_preds <- predict(svm_model, newdata = val_svm)
+
+confusionMatrix(svm_preds, val_svm$top10, positive = "TRUE")
+
+# Model comparison
+# ROC
+
+lg_probs
+
+rf_probs <- predict(rf_model, newdata = test_sc1, type="prob")[, "TRUE"]
+rf_probs
+
+svm_probs <- predict(svm_model, newdata = test_svm, probability = TRUE)
+svm_probs <- attr(svm_probs, "probabilities")[, "TRUE"]
+svm_probs
+
+library(pROC)
+
+roc_lg <- roc(test_sc1$top10, lg_probs)
+roc_rf <- roc(test_sc1$top10, rf_probs)
+roc_svm <- roc(test_svm$top10, svm_probs)
+
+auc(roc_lg)
+auc(roc_rf)
+auc(roc_svm)
+
+roc_df <- bind_rows(
+  data.frame(
+    specificity = roc_lg$specificities,
+    sensitivity = roc_lg$sensitivities,
+    model = "Logistic Regression"
+  ),
+  data.frame(
+    specificity = roc_rf$specificities,
+    sensitivity = roc_rf$sensitivities,
+    model = "Random Forest"
+  ),
+  data.frame(
+    specificity = roc_svm$specificities,
+    sensitivity = roc_svm$sensitivities,
+    model = "SVM"
+  )
+) %>%
+  mutate(
+    false_positive_rate = 1 - specificity
+  )
+
+ggplot(roc_df, aes(x = false_positive_rate, y = sensitivity, color = model)) +
+  geom_line(linewidth = 0.7) +
+  geom_abline(linetype = "dashed") +
+  labs(
+    title = "ROC Curves for Classification Models",
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity)",
+    color = "Model"
+  ) 
