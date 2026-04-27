@@ -420,3 +420,16 @@ confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
 
 confusionMatrix(factor(lg_st_preds), factor(test_sc1$top10), positive = "TRUE")
 
+# However the 0.65 threshold showing a better specificity and balanced accuracy,
+# as mentioned before finding laps in top 10 is more important, so sensitivity playing a crucial role, and 
+# 0.5 threshold shows 92% against 81% of 0.65 threshold. So, the threshold of 0.5 is more suitable for the 
+# our goal.
+
+# Random Forest
+# Independence: repeated laps per driver is a limitation of the dataset
+# Linearity: some predictors shown non-linear relationship with a target 
+# Sample size: 708 lap-level observations with the 6 parameters + dummy encodings of the Stint and Compound
+# must be enough for fitting a random forest
+
+
+
