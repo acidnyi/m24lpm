@@ -314,8 +314,8 @@ ggplot(data, aes(x = yellow_flag, fill = top10)) +
 # TyreLife
 # Stint
 # SpeedI1
-# SpeedFL - need to test on the models
-# SpeedST - need to test on the models
+# SpeedFL
+# SpeedST
 # Compound
 
 # SCENARIO 1
@@ -692,3 +692,79 @@ ggplot(roc_df, aes(x = false_positive_rate, y = sensitivity, color = model)) +
   ) 
 
 # Scenario 3
+
+# Use the Stepwise Logistic Regression for algorithmic feature selection
+# based on the results we should remove the SpeedI1
+# intersting that Compound stayed, however being not significant, the possible reason
+# is improved results in combination with other features
+# Important note: these feature selection method is based on the logistic regression
+# so with random forest may not work good
+step_model <- step(
+  lg_model,
+  direction = "both",
+  trace=TRUE
+)
+
+# Logistic Regression
+
+# Full set of features
+
+lg_probs <- predict(lg_model, newdata = test_sc1, type = "response")
+
+roc_lg <- roc(test_sc1$top10, lg_probs)
+
+lg_preds <- ifelse(lg_probs > 0.5, T, F)
+
+# Metrics
+confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
+AIC(lg_model)
+auc(roc_lg)
+
+# Reduced by the stepwise
+# without SpeedI1
+
+lg_step_model <- glm(data=train_sc1,
+                family = binomial,
+                top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL + Compound
+)
+
+lg_step_probs <- predict(lg_step_model, newdata = test_sc1, type="response")
+
+roc_step_lg <- roc(test_sc1$top10, lg_step_probs)
+
+lg_step_preds <- ifelse(lg_step_probs > 0.5, T, F)
+
+confusionMatrix(factor(lg_step_preds), factor(test_sc1$top10), positive ="TRUE")
+AIC(lg_step_model)
+auc(roc_step_lg)
+
+# Reduce by the significance of the features
+# The full model, insignificant:
+# SpeedI1, CompoundSoft, CompoundMedium and Stint4
+summary(lg_model)
+
+# Results on the model without SpeedI1, insignificant:
+# Stint4, CompoundMedium, CompoundSoft
+# Remove the Compound on this step, because Stint and Compound are factors,
+# but Stint3 is significant, while both Compounds are insignificant
+summary(lg_step_model)
+
+lg_reduced_model <- glm(data=train_sc1,
+                        family = binomial,
+                        top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL
+)
+
+summary(lg_reduced_model)
+
+lg_reduced_probs <- predict(lg_reduced_model, newdata = test_sc1, type="response")
+
+roc_reduced_lg <- roc(test_sc1$top10, lg_reduced_probs)
+
+lg_reduced_preds <- ifelse(lg_reduced_probs > 0.5, T, F)
+
+confusionMatrix(factor(lg_reduced_preds), factor(test_sc1$top10), positive ="TRUE")
+AIC(lg_reduced_model)
+auc(roc_reduced_lg)
+
+# Random Forest
+
