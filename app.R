@@ -29,8 +29,6 @@ scale_for_svm <- function(data, means, sds, features) {
   scaled
 }
 
-
-
 ui <- fluidPage(
   
   titlePanel("Top 10 Lap Prediction App"),
@@ -89,9 +87,7 @@ ui <- fluidPage(
       plotOutput("prob_plot"),
       
       h3("Model note"),
-      textOutput("model_note"),
-      
-      verbatimTextOutput("debug_svm")
+      textOutput("model_note")
     )
   )
 )
@@ -179,13 +175,12 @@ server <- function(input, output) {
       "Random Forest - Full" =
         "Full Random Forest uses all predictors and captures nonlinear effects.",
       "Random Forest - Reduced" =
-        "RFE Random Forest uses recursive feature elimination to evaluate feature subsets."
+        "Reduced Random Forest removes statistically not important predictors.",
+      "Support Vector Machine" =
+        "Support Vector Machine uses all selected Scenario 1 predictors."
     )
   })
   
-  output$debug_svm <- renderPrint({
-    new_data_svm()
-  })
 }
 
 shinyApp(ui = ui, server = server)
