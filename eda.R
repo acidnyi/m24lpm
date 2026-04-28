@@ -768,3 +768,55 @@ auc(roc_reduced_lg)
 
 # Random Forest
 
+# Full set of features
+
+rf_preds <- predict(rf_model, newdata = test_sc1)
+
+confusionMatrix(rf_preds, test_sc1$top10, positive = "TRUE")
+
+# RFE 
+x_train <- train_sc1 %>% select(-top10)
+y_train <- train_sc1$top10
+
+ctrl <- rfeControl(
+  functions = rfFuncs,
+  method = "cv",
+  number = 5
+)
+
+set.seed(29)
+rfe_model <- rfe(
+  x = x_train,
+  y = y_train,
+  sizes = c(2,3,4,5,6),
+  ntree = 100,
+  mtry = 5,
+  nodesize = 3,
+  rfeControl = ctrl
+)
+
+rfe_model
+# RFE keep all predictors
+predictors(rfe_model)
+
+# Remove the least significant predictor
+# least improtant predictor is Compound, let's remove it as model shows
+# and see the resutl
+rf_model$importance
+
+rf_reduced_model <- randomForest(
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL,
+  data = train_sc1,
+  ntree = 100,
+  mtry = 5,
+  nodesize = 3,
+  replace = TRUE,
+  importance = TRUE
+)
+
+
+rf_reduced_preds <- predict(rf_reduced_model, newdata = test_sc1)
+
+confusionMatrix(rf_reduced_preds, test_sc1$top10, positive = "TRUE")
+
+# After the removing of the Compound model become worse.
