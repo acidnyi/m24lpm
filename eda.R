@@ -820,3 +820,16 @@ rf_reduced_preds <- predict(rf_reduced_model, newdata = test_sc1)
 confusionMatrix(rf_reduced_preds, test_sc1$top10, positive = "TRUE")
 
 # After the removing of the Compound model become worse.
+
+# Save models for shiny app
+saveRDS(lg_model, "models/lg_model.rds")
+saveRDS(lg_step_model, "models/lg_step_model.rds")
+saveRDS(lg_reduced_model, "models/lg_reduced_model.rds")
+saveRDS(rf_model, "models/rf_model.rds")
+saveRDS(rf_reduced_model, "models/rf_reduced_model.rds")
+
+saveRDS(svm_model, "models/svm_model.rds")
+saveRDS(train_means, "models/train_means.rds")
+saveRDS(train_sds, "models/train_sds.rds")
+
+data
