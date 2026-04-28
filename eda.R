@@ -373,6 +373,16 @@ lg_model <- glm(data=train_sc1,
 
 summary(lg_model)
 
+# Feature Importance
+# SpeedI2 - very significant 
+# TyreLife - significant
+# Stint3 - very significant
+# Stint4 - big errors, due to the small number of observations
+# SpeedI1 - not significant
+# SpeedFL - significant
+# CompoundMedium - not significant
+# CompoundSoft - big errors, due to the small number of observations
+
 # Threshold tuning
 thresholds <- seq(0.05, 0.95, by=0.05)
 
@@ -503,11 +513,21 @@ rf_model <- randomForest(
   importance = TRUE
 )
 
+rf_model$importance
+
+# Feature Importance
+# SpeedI2 - very significant
+# TyreLife - significant
+# Stint - significant
+# SpeedI1 - significant
+# SpeedFL - very significant
+# Compound - not significant
+
 rf_preds <- predict(rf_model, newdata = test_sc1)
 
 confusionMatrix(rf_preds, test_sc1$top10, positive = "TRUE")
 
-# Logistic Regression
+# SVM
 # Independence: repeated laps per driver is a limitation of the dataset
 # Colinearity: no severe colinearity
 # Outliers: ??
@@ -594,6 +614,8 @@ svm_results <- lapply(1:nrow(svm_grid), function(i) {
   )
 })
 
+summary(svm_model)
+
 svm_results <- bind_rows(svm_results)
 
 svm_results %>%
@@ -608,6 +630,9 @@ svm_model <- svm(
   gamma = 0.955,
   probability = TRUE
 )
+
+# No check of the Feature Importance due to the radial kernel chosen
+# these option doesn't provide a clear data about the significance of the features
 
 svm_preds <- predict(svm_model, newdata = val_svm)
 
@@ -665,3 +690,5 @@ ggplot(roc_df, aes(x = false_positive_rate, y = sensitivity, color = model)) +
     y = "True Positive Rate (Sensitivity)",
     color = "Model"
   ) 
+
+# Scenario 3
