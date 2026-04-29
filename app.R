@@ -6,12 +6,23 @@ library(pROC)
 rm(list= ls())
 
 lg_model <- readRDS("models/lg_model.rds")
+roc_lg <- readRDS("models/roc_lg.rds")
+
 lg_step_model <- readRDS("models/lg_step_model.rds")
+roc_step_lg <- readRDS("models/roc_step_lg.rds")
+
 lg_reduced_model <- readRDS("models/lg_reduced_model.rds")
+roc_reduced_lg <- readRDS("models/roc_reduced_lg.rds")
+
 rf_model <- readRDS("models/rf_model.rds")
+roc_rf <- readRDS("models/roc_rf.rds")
+
 rf_reduced_model <- readRDS("models/rf_reduced_model.rds")
+roc_reduced_rf <- readRDS("models/roc_reduced_rf.rds")
 
 svm_model <- readRDS("models/svm_model.rds")
+roc_svm <- readRDS("models/roc_svm.rds")
+
 train_means <- readRDS("models/train_means.rds")
 train_sds <- readRDS("models/train_sds.rds")
 
@@ -86,6 +97,9 @@ ui <- fluidPage(
       h3("Probability of Top 10"),
       plotOutput("prob_plot"),
       
+      h3("ROC Curve"),
+      plotOutput("roc_plot"),
+      
       h3("Model note"),
       textOutput("model_note")
     )
@@ -142,6 +156,18 @@ server <- function(input, output) {
     }
   })
   
+  selected_roc <- reactive({
+    switch(
+      input$model_choice,
+      "Logistic Regression - Full" = roc_lg,
+      "Logistic Regression - Stepwise" = roc_step_lg,
+      "Logistic Regression - Reduced" = roc_reduced_lg,
+      "Random Forest - Full" = roc_rf,
+      "Random Forest - Reduced" = roc_reduced_rf,
+      "Support Vector Machine" = roc_svm
+    )
+  })
+  
   output$prediction_output <- renderPrint({
     prob <- pred_prob()
     pred_class <- ifelse(prob >= input$threshold, "TRUE", "FALSE")
@@ -160,6 +186,22 @@ server <- function(input, output) {
       ylim = c(0, 1),
       main = "Predicted Probability",
       ylab = "Probability"
+    )
+  })
+
+  
+  output$roc_plot <- renderPlot({
+    roc_obj <- selected_roc()
+    
+    plot(
+      roc_obj,
+      main = paste("ROC Curve -", input$model_choice)
+    )
+    
+    legend(
+      "bottomright",
+      legend = paste("AUC =", round(auc(roc_obj), 4)),
+      bty = "n"
     )
   })
   

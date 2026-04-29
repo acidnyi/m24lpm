@@ -157,7 +157,7 @@ shapiro.test(data$SpeedST)
 # All speed features are not following the Normal Distribution
 
 # To check if the feature are good for distinguish
-#ggplot(data, aes(x = SpeedI1, fill=top10)) +
+# ggplot(data, aes(x = SpeedI1, fill=top10)) +
 #  geom_histogram(bins=30, alpha= 0.6, position="identity")
 
 # Feature Scaling
@@ -614,8 +614,6 @@ svm_results <- lapply(1:nrow(svm_grid), function(i) {
   )
 })
 
-summary(svm_model)
-
 svm_results <- bind_rows(svm_results)
 
 svm_results %>%
@@ -814,10 +812,12 @@ rf_reduced_model <- randomForest(
   importance = TRUE
 )
 
+rf_reduced_probs <- predict(rf_model, newdata = test_sc1, type="prob")[, "TRUE"]
 
 rf_reduced_preds <- predict(rf_reduced_model, newdata = test_sc1)
 
 confusionMatrix(rf_reduced_preds, test_sc1$top10, positive = "TRUE")
+roc_reduced_rf <- roc(test_sc1$top10, rf_reduced_probs)
 
 # After the removing of the Compound model become worse.
 
@@ -831,5 +831,12 @@ saveRDS(rf_reduced_model, "models/rf_reduced_model.rds")
 saveRDS(svm_model, "models/svm_model.rds")
 saveRDS(train_means, "models/train_means.rds")
 saveRDS(train_sds, "models/train_sds.rds")
+
+saveRDS(roc_lg, "models/roc_lg.rds")
+saveRDS(roc_step_lg, "models/roc_step_lg.rds")
+saveRDS(roc_reduced_lg, "models/roc_reduced_lg.rds")
+saveRDS(roc_rf, "models/roc_rf.rds")
+saveRDS(roc_reduced_rf, "models/roc_reduced_rf.rds")
+saveRDS(roc_svm, "models/roc_svm.rds")
 
 data
