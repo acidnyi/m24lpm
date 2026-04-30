@@ -27,7 +27,6 @@ roc_svm <- readRDS("models/roc_svm.rds")
 train_means <- readRDS("models/train_means.rds")
 train_sds <- readRDS("models/train_sds.rds")
 
-train_means
 num_features <- c("SpeedI2", "SpeedI1", "SpeedFL", "TyreLife")
 
 train_sc1 <- readRDS("models/train_sc1.rds")
@@ -90,8 +89,6 @@ ui <- fluidPage(
           plotOutput("prob_plot"),
           h3("ROC Curve"),
           plotOutput("roc_plot"),
-          h3("Model note"),
-          textOutput("model_note")
         )
       )
     ),
@@ -388,23 +385,6 @@ server <- function(input, output) {
     }
   })
   
-  output$model_note <- renderText({
-    switch(
-      input$model_choice,
-      "Logistic Regression - Full" =
-        "Full logistic regression uses all selected Scenario 1 predictors.",
-      "Logistic Regression - Stepwise" =
-        "Stepwise model uses AIC-based algorithmic feature selection.",
-      "Logistic Regression - Reduced" =
-        "Reduced logistic model removes statistically insignificant predictors.",
-      "Random Forest - Full" =
-        "Full Random Forest uses all predictors and captures nonlinear effects.",
-      "Random Forest - Reduced" =
-        "Reduced Random Forest removes statistically not important predictors.",
-      "Support Vector Machine" =
-        "Support Vector Machine uses all selected Scenario 1 predictors."
-    )
-  })
   
 }
 

@@ -25,6 +25,11 @@ rm(list= ls())
 
 library(tidyverse)
 library(magrittr)
+library(rsample)
+library(caret)
+library(randomForest)
+library(e1071)
+library(pROC)
 
 weather <- read_csv("data/weather_raw.csv")
 laps <- read_csv("data/laps_raw.csv")
@@ -768,8 +773,6 @@ data_sc1 <- data %>% select(SpeedI1, SpeedI2, SpeedFL, TyreLife, Stint, Compound
 The data was then split into training, validation, and test sets. A fixed random seed was used to make the split reproducible.
 
 ```{r}
-library(rsample)
-
 set.seed(13)
 
 data_sc1$top10 <- as.factor(data_sc1$top10)
@@ -937,8 +940,6 @@ lg_probs <- predict(lg_model, newdata = test_sc1, type = "response")
 # use the threshold based on the threshold tuning
 lg_preds <- ifelse(lg_probs > 0.6, T, F)
 
-library(caret)
-
 confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
 
 ```
@@ -1008,7 +1009,6 @@ For Random Forest, three parameters were tuned:
 The `maxnodes` parameter was not tuned. Since the dataset is not very large and the number of predictors is limited, `nodesize` was used as the main control for tree complexity.
 
 ```{r}
-library(randomForest)
 set.seed(13)
 
 # Parameter tuning
@@ -1237,7 +1237,6 @@ For the SVM model, three main parameters were tuned:
 A grid of possible values was tested on the validation set.
 
 ```{r}
-library(e1071)
 set.seed(13)
 
 svm_grid <- expand.grid(
@@ -1349,8 +1348,6 @@ rf_probs %>% head(n = 30)
 svm_probs <- predict(svm_model, newdata = test_svm, probability = TRUE)
 svm_probs <- attr(svm_probs, "probabilities")[, "TRUE"]
 svm_probs %>% head(n=30)
-
-library(pROC)
 
 roc_lg <- roc(test_sc1$top10, lg_probs)
 roc_rf <- roc(test_sc1$top10, rf_probs)
@@ -1575,7 +1572,7 @@ The full Random Forest model performed well on the test set. It reached an accur
 
 Next, Recursive Feature Elimination was used. This method tests different subset sizes and checks which number of predictors gives the best cross-validated performance.
 
-```{r}
+```{r, warning=FALSE}
 # RFE 
 x_train <- train_sc1 %>% select(-top10)
 y_train <- train_sc1$top10
@@ -1669,3 +1666,91 @@ For Random Forest, the result was different. Recursive Feature Elimination selec
 
 Overall, Scenario 3 shows that feature selection is both method-dependent and model-dependent. A feature that can be removed from one model should not automatically be removed from another model. For this project, the best reduced Logistic Regression model excluded `SpeedI1`, while the best Random Forest model kept the full feature set.
 
+# 8. Shiny App
+
+A Shiny application was created for the oral presentation part of the project. The goal of the app is to make the fitted models easier to demonstrate and to show how predictions change when the user changes input values or model settings.
+
+The application has two main pages: one for pretrained models and one for custom model fitting.
+
+## 8.1 Pretrained Models Page
+
+The first page uses the models that were already fitted during the analysis. The user can enter lap-related conditions and choose which pretrained model should be used for prediction.
+
+The input variables are:
+
+- `SpeedI2`
+- `SpeedFL`
+- `SpeedI1`
+- `TyreLife`
+- `Stint`
+- `Compound`
+
+The user can choose between the following pretrained models:
+
+- Logistic Regression - Full
+- Logistic Regression - Stepwise
+- Logistic Regression - Reduced
+- Random Forest - Full
+- Random Forest - Reduced
+- Support Vector Machine
+
+The page also includes a classification threshold slider. This allows the user to change the threshold used to convert the predicted probability into a final class prediction.
+
+For each input combination, the app returns the predicted class and the predicted probability of belonging to the Top 10 class. It also shows a probability bar plot and the ROC curve with the AUC value for the selected model.
+
+For the SVM model, the numerical inputs are scaled before prediction. The scaling uses the training-set means and standard deviations saved from the original modelling workflow, so the preprocessing stays consistent with the analysis.
+
+## 8.2 Custom Models Page
+
+The second page allows the user to fit a custom model directly inside the application. This part is mainly used to demonstrate how model performance changes when different predictors or parameters are selected.
+
+The user can choose which predictors to include in the model from the following list:
+
+- `SpeedI2`
+- `SpeedI1`
+- `SpeedFL`
+- `TyreLife`
+- `Stint`
+- `Compound`
+
+The user can then select the model type:
+
+- Logistic Regression
+- Random Forest
+- SVM
+
+For Random Forest, the app allows the user to adjust:
+
+- `ntree`
+- `mtry`
+- `nodesize`
+
+For SVM, the app allows the user to adjust:
+
+- `cost`
+- `gamma`
+- `kernel`
+
+The selected model is refitted automatically when the user changes the predictors, model type, or parameter values. The app then evaluates the model on the test set and displays the confusion matrix, ROC curve, and AUC value.
+
+# 9. Conclusion
+
+---
+# Результатом проекта можна выделить вывод, что наиболее подходящий подход для решении проблемы очень зависит от цели. Если бы в первую очередь важен был бы перформанс, то лучшей моделью стал бы #SVM за счет наилучших показателей sensitivity, auc и balanced accuracy ценой низкой interpretability. Если бы interpretability была бы критически важным критерием, Logistic Regression был бы #наиболее выгодным вариантом, даже не смотря на относительно невысокие показатели. Я вижу наиболее оптимальным решением использование Random Forest за счет баланса interpretability и качества, #Random Forest лишь немного уступает SVM, взамен указывая на важные predictors.
+#
+#По поводу feature selection, все зависит от модели, для Logistic Regression удалить SpeedI1 было удачным решением, что по анализу significance, что по результату stepwise approach. Хотя, для #Random Forest SpeedI1 не был слабым predictor исходя из анализа importance. Важно заметить, что не всегда удаление наименее полезного признака являеться хорошим решением, как это показали #Logistic Regression и Random Forest при удалении Compound, обе модели указывали на слабость этого предиктора, но после его удаления стали хуже. Как вывод даже слабый предиктор может приносить не #мало пользы в комбинации с остальными, поэтому для оптимальной модели требуеться тщательно выбирать features и обязательно проверять результат изменений.
+---
+
+The main conclusion of this project is that the most suitable modelling approach depends strongly on the goal of the analysis.
+
+If predictive performance is the main priority, the SVM model is the strongest option. It achieved the best sensitivity, AUC, and balanced accuracy among the tested models. However, this comes at the cost of lower interpretability, because the radial SVM does not provide simple coefficients or clear feature importance values.
+
+If interpretability is the most important criterion, Logistic Regression is the most suitable model. It is easier to explain and allows us to interpret the direction of the relationship between predictors and the probability of belonging to the Top 10 class. However, its performance was lower compared with the nonlinear models.
+
+In this project, Random Forest can be seen as the most balanced solution. It performed only slightly worse than SVM, but it also provided feature importance, which makes the model easier to interpret. Because of this, Random Forest offers a good compromise between predictive performance and explainability.
+
+The feature selection results also showed that the usefulness of predictors depends on the model. For Logistic Regression, removing `SpeedI1` was a good decision according to both the stepwise approach and the significance-based analysis. However, for Random Forest, `SpeedI1` was not a weak predictor based on feature importance, and not removing anything will be a right approach.
+
+Another important result is that removing the least useful-looking predictor is not always a good decision. Both Logistic Regression and Random Forest suggested that `Compound` was relatively weak, but after removing it, the models became worse. This shows that even a weak predictor can still add useful information when combined with other variables.
+
+Overall, feature selection should not be done only by looking at one criterion, such as p-values or feature importance. Any change in the feature set should be checked by comparing model performance after the change. For this project, the final results show that predicting Top 10 laps is possible with good performance, but the best modelling choice depends on whether the priority is performance, interpretability, or a balance between both.

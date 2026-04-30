@@ -4,6 +4,11 @@ setwd("git/m24lpm/")
 
 library(tidyverse)
 library(magrittr)
+library(rsample)
+library(pROC)
+library(e1071)
+library(randomForest)
+library(caret)
 
 data <- read_csv("data.csv")
 data
@@ -331,8 +336,6 @@ ggplot(data, aes(x = yellow_flag, fill = top10)) +
 data_sc1 <- data %>% select(SpeedI1, SpeedI2, SpeedFL, TyreLife, Stint, Compound, top10)
 
 # Train/Val/Test sets
-library(rsample)
-
 set.seed(13)
 
 data_sc1$top10 <- as.factor(data_sc1$top10)
@@ -423,8 +426,6 @@ lg_preds <- ifelse(lg_probs > 0.6, T, F)
 # use the standard threshold of 0.5 for comparison
 lg_st_preds <- ifelse(lg_probs > 0.5, T, F)
 
-library(caret)
-
 confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
 
 confusionMatrix(factor(lg_st_preds), factor(test_sc1$top10), positive = "TRUE")
@@ -435,8 +436,6 @@ confusionMatrix(factor(lg_st_preds), factor(test_sc1$top10), positive = "TRUE")
 # Linearity: some predictors shown non-linear relationship with a target 
 # Sample size: 708 lap-level observations with the 6 parameters + dummy encodings of the Stint and Compound
 # must be enough for fitting a random forest
-
-library(randomForest)
 set.seed(13)
 
 # Parameter tuning
@@ -570,7 +569,6 @@ val_svm <- scale(val_sc1, train_means, train_sds, num_features)
 test_svm <- scale(test_sc1, train_means, train_sds, num_features)
 
 # Parameter Tuning
-library(e1071)
 set.seed(13)
 
 svm_grid <- expand.grid(
@@ -645,8 +643,6 @@ rf_probs
 svm_probs <- predict(svm_model, newdata = test_svm, probability = TRUE)
 svm_probs <- attr(svm_probs, "probabilities")[, "TRUE"]
 svm_probs
-
-library(pROC)
 
 roc_lg <- roc(test_sc1$top10, lg_probs)
 roc_rf <- roc(test_sc1$top10, rf_probs)

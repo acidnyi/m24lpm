@@ -26,15 +26,3 @@ laps.to_csv(os.path.join(OUTDIR, "laps_raw.csv"), index=False)
 # getting weather data 
 weather = session.weather_data.copy()
 weather.to_csv(os.path.join(OUTDIR, "weather_raw.csv"), index=False)
-
-# getting telemetry
-for idx, lap in laps.iterrows():
-
-    driver = lap["Driver"]
-    # lapNumber is originally float
-    lap_no = int(lap["LapNumber"])
-
-    tel = lap.get_car_data()
-
-    filename = f"{driver}_lap_{lap_no:02d}.csv"
-    tel.to_csv(os.path.join(os.path.join(OUTDIR, "telemetry_raw"), filename), index=False)

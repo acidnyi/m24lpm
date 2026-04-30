@@ -11,7 +11,7 @@
 
 <meta name="author" content="Serhii Kuklych" />
 
-<meta name="date" content="2026-04-30" />
+<meta name="date" content="2026-05-01" />
 
 <title>Top 10 Lap Classification</title>
 
@@ -352,7 +352,7 @@ display: none;
 
 <h1 class="title toc-ignore">Top 10 Lap Classification</h1>
 <h4 class="author">Serhii Kuklych</h4>
-<h4 class="date">2026-04-30</h4>
+<h4 class="date">2026-05-01</h4>
 
 </div>
 
@@ -374,6 +374,11 @@ where each lap is classified either as Top 10 or not Top 10.</p>
 
 library(tidyverse)
 library(magrittr)
+library(rsample)
+library(caret)
+library(randomForest)
+library(e1071)
+library(pROC)
 
 weather &lt;- read_csv(&quot;data/weather_raw.csv&quot;)
 laps &lt;- read_csv(&quot;data/laps_raw.csv&quot;)</code></pre>
@@ -1523,9 +1528,7 @@ the target variable <code>top10</code>.</p>
 <pre class="r"><code>data_sc1 &lt;- data %&gt;% select(SpeedI1, SpeedI2, SpeedFL, TyreLife, Stint, Compound, top10)</code></pre>
 <p>The data was then split into training, validation, and test sets. A
 fixed random seed was used to make the split reproducible.</p>
-<pre class="r"><code>library(rsample)
-
-set.seed(13)
+<pre class="r"><code>set.seed(13)
 
 data_sc1$top10 &lt;- as.factor(data_sc1$top10)
 
@@ -1830,17 +1833,7 @@ lg_probs &lt;- predict(lg_model, newdata = test_sc1, type = &quot;response&quot;
 # use the threshold based on the threshold tuning
 lg_preds &lt;- ifelse(lg_probs &gt; 0.6, T, F)
 
-library(caret)</code></pre>
-<pre><code>## Loading required package: lattice</code></pre>
-<pre><code>## 
-## Attaching package: &#39;caret&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:rsample&#39;:
-## 
-##     calibration</code></pre>
-<pre><code>## The following object is masked from &#39;package:purrr&#39;:
-## 
-##     lift</code></pre>
-<pre class="r"><code>confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = &quot;TRUE&quot;)</code></pre>
+confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = &quot;TRUE&quot;)</code></pre>
 <pre><code>## Confusion Matrix and Statistics
 ## 
 ##           Reference
@@ -1965,17 +1958,6 @@ each split;</li>
 is not very large and the number of predictors is limited,
 <code>nodesize</code> was used as the main control for tree
 complexity.</p>
-<pre class="r"><code>library(randomForest)</code></pre>
-<pre><code>## randomForest 4.7-1.2</code></pre>
-<pre><code>## Type rfNews() to see new features/changes/bug fixes.</code></pre>
-<pre><code>## 
-## Attaching package: &#39;randomForest&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:dplyr&#39;:
-## 
-##     combine</code></pre>
-<pre><code>## The following object is masked from &#39;package:ggplot2&#39;:
-## 
-##     margin</code></pre>
 <pre class="r"><code>set.seed(13)
 
 # Parameter tuning
@@ -2332,15 +2314,6 @@ boundary.</li>
 <li><code>kernel</code>: controls how the data is transformed</li>
 </ul>
 <p>A grid of possible values was tested on the validation set.</p>
-<pre class="r"><code>library(e1071)</code></pre>
-<pre><code>## 
-## Attaching package: &#39;e1071&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:rsample&#39;:
-## 
-##     permutations</code></pre>
-<pre><code>## The following object is masked from &#39;package:ggplot2&#39;:
-## 
-##     element</code></pre>
 <pre class="r"><code>set.seed(13)
 
 svm_grid &lt;- expand.grid(
@@ -2577,13 +2550,6 @@ svm_probs %&gt;% head(n=30)</code></pre>
 ## 0.6159111 0.9138591 0.9390658 0.9656274 0.9476094 0.9767009 0.4975336 0.9332228 
 ##        25        26        27        28        29        30 
 ## 0.9771435 0.9560722 0.9819650 0.9561285 0.8895850 0.9376312</code></pre>
-<pre class="r"><code>library(pROC)</code></pre>
-<pre><code>## Type &#39;citation(&quot;pROC&quot;)&#39; for a citation.</code></pre>
-<pre><code>## 
-## Attaching package: &#39;pROC&#39;</code></pre>
-<pre><code>## The following objects are masked from &#39;package:stats&#39;:
-## 
-##     cov, smooth, var</code></pre>
 <pre class="r"><code>roc_lg &lt;- roc(test_sc1$top10, lg_probs)</code></pre>
 <pre><code>## Setting levels: control = FALSE, case = TRUE</code></pre>
 <pre><code>## Setting direction: controls &lt; cases</code></pre>
@@ -3094,38 +3060,9 @@ rfe_model &lt;- rfe(
   mtry = 5,
   nodesize = 3,
   rfeControl = ctrl
-)</code></pre>
-<pre><code>## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range
-## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
-## reset to within valid range</code></pre>
-<pre class="r"><code>rfe_model</code></pre>
+)
+
+rfe_model</code></pre>
 <pre><code>## 
 ## Recursive feature selection
 ## 
@@ -3271,6 +3208,129 @@ this project, the best reduced Logistic Regression model excluded
 <code>SpeedI1</code>, while the best Random Forest model kept the full
 feature set.</p>
 </div>
+</div>
+<div id="shiny-app" class="section level1">
+<h1>8. Shiny App</h1>
+<p>A Shiny application was created for the oral presentation part of the
+project. The goal of the app is to make the fitted models easier to
+demonstrate and to show how predictions change when the user changes
+input values or model settings.</p>
+<p>The application has two main pages: one for pretrained models and one
+for custom model fitting.</p>
+<div id="pretrained-models-page" class="section level2">
+<h2>8.1 Pretrained Models Page</h2>
+<p>The first page uses the models that were already fitted during the
+analysis. The user can enter lap-related conditions and choose which
+pretrained model should be used for prediction.</p>
+<p>The input variables are:</p>
+<ul>
+<li><code>SpeedI2</code></li>
+<li><code>SpeedFL</code></li>
+<li><code>SpeedI1</code></li>
+<li><code>TyreLife</code></li>
+<li><code>Stint</code></li>
+<li><code>Compound</code></li>
+</ul>
+<p>The user can choose between the following pretrained models:</p>
+<ul>
+<li>Logistic Regression - Full</li>
+<li>Logistic Regression - Stepwise</li>
+<li>Logistic Regression - Reduced</li>
+<li>Random Forest - Full</li>
+<li>Random Forest - Reduced</li>
+<li>Support Vector Machine</li>
+</ul>
+<p>The page also includes a classification threshold slider. This allows
+the user to change the threshold used to convert the predicted
+probability into a final class prediction.</p>
+<p>For each input combination, the app returns the predicted class and
+the predicted probability of belonging to the Top 10 class. It also
+shows a probability bar plot and the ROC curve with the AUC value for
+the selected model.</p>
+<p>For the SVM model, the numerical inputs are scaled before prediction.
+The scaling uses the training-set means and standard deviations saved
+from the original modelling workflow, so the preprocessing stays
+consistent with the analysis.</p>
+</div>
+<div id="custom-models-page" class="section level2">
+<h2>8.2 Custom Models Page</h2>
+<p>The second page allows the user to fit a custom model directly inside
+the application. This part is mainly used to demonstrate how model
+performance changes when different predictors or parameters are
+selected.</p>
+<p>The user can choose which predictors to include in the model from the
+following list:</p>
+<ul>
+<li><code>SpeedI2</code></li>
+<li><code>SpeedI1</code></li>
+<li><code>SpeedFL</code></li>
+<li><code>TyreLife</code></li>
+<li><code>Stint</code></li>
+<li><code>Compound</code></li>
+</ul>
+<p>The user can then select the model type:</p>
+<ul>
+<li>Logistic Regression</li>
+<li>Random Forest</li>
+<li>SVM</li>
+</ul>
+<p>For Random Forest, the app allows the user to adjust:</p>
+<ul>
+<li><code>ntree</code></li>
+<li><code>mtry</code></li>
+<li><code>nodesize</code></li>
+</ul>
+<p>For SVM, the app allows the user to adjust:</p>
+<ul>
+<li><code>cost</code></li>
+<li><code>gamma</code></li>
+<li><code>kernel</code></li>
+</ul>
+<p>The selected model is refitted automatically when the user changes
+the predictors, model type, or parameter values. The app then evaluates
+the model on the test set and displays the confusion matrix, ROC curve,
+and AUC value.</p>
+</div>
+</div>
+<div id="conclusion" class="section level1">
+<h1>9. Conclusion</h1>
+<p>The main conclusion of this project is that the most suitable
+modelling approach depends strongly on the goal of the analysis.</p>
+<p>If predictive performance is the main priority, the SVM model is the
+strongest option. It achieved the best sensitivity, AUC, and balanced
+accuracy among the tested models. However, this comes at the cost of
+lower interpretability, because the radial SVM does not provide simple
+coefficients or clear feature importance values.</p>
+<p>If interpretability is the most important criterion, Logistic
+Regression is the most suitable model. It is easier to explain and
+allows us to interpret the direction of the relationship between
+predictors and the probability of belonging to the Top 10 class.
+However, its performance was lower compared with the nonlinear
+models.</p>
+<p>In this project, Random Forest can be seen as the most balanced
+solution. It performed only slightly worse than SVM, but it also
+provided feature importance, which makes the model easier to interpret.
+Because of this, Random Forest offers a good compromise between
+predictive performance and explainability.</p>
+<p>The feature selection results also showed that the usefulness of
+predictors depends on the model. For Logistic Regression, removing
+<code>SpeedI1</code> was a good decision according to both the stepwise
+approach and the significance-based analysis. However, for Random
+Forest, <code>SpeedI1</code> was not a weak predictor based on feature
+importance, and not removing anything will be a right approach.</p>
+<p>Another important result is that removing the least useful-looking
+predictor is not always a good decision. Both Logistic Regression and
+Random Forest suggested that <code>Compound</code> was relatively weak,
+but after removing it, the models became worse. This shows that even a
+weak predictor can still add useful information when combined with other
+variables.</p>
+<p>Overall, feature selection should not be done only by looking at one
+criterion, such as p-values or feature importance. Any change in the
+feature set should be checked by comparing model performance after the
+change. For this project, the final results show that predicting Top 10
+laps is possible with good performance, but the best modelling choice
+depends on whether the priority is performance, interpretability, or a
+balance between both.</p>
 </div>
 
 
