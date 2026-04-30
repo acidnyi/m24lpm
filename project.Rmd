@@ -1,0 +1,728 @@
+---
+title: "Top 10 Lap Classification"
+author: "Serhii Kuklych"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# 1. Introduction
+
+---
+# Цель проекта имея данные с гонки формулы 1 в Монако 2024, создать модель которая по данным о круге определит был ли этот круг от гонщика находящегося в топ 10.
+# Как результат, будет можно опеределить какие компоненты гонки являються определяющими в вопросах попадания в топ 10. Данная задача рассматриваеться как бинарная класификация на топ 10
+# и не топ 10.
+---
+The aim of this project is to use data from the 2024 Formula 1 Monaco Grand Prix to build a model that can determine whether a given lap was completed by a driver positioned in the Top 10.
+
+As a result, the analysis can help identify which race-related factors are most relevant for distinguishing laps associated with Top 10 positions. This task is treated as a binary classification problem, where each lap is classified either as Top 10 or not Top 10.
+
+# 2. Data Description
+
+Project setup:
+
+```{r message=F, warning=F}
+rm(list= ls())
+
+library(tidyverse)
+library(magrittr)
+
+weather <- read_csv("data/weather_raw.csv")
+laps <- read_csv("data/laps_raw.csv")
+```
+
+---
+# Данные были взяти из пайтоновской библиотеки FastF1. Оттуда были скачаны данные о кругах каждого гонщика и погодных условиях на треке.
+# Погодные данные виглядят подобным образом:
+---
+
+The data used in this project was obtained from the Python library FastF1. From this source, lap-level data for each driver and weather conditions during the race were downloaded.
+
+The weather data can be summarized as follows:
+
+
+```{r}
+summary(weather)
+```
+---
+# Погодные данные предоставляют информацию о: температуре воздуха и на треке, влажности, давлении, направлении ветра и скорости ветра. Погодные данные изначально использовались для 
+# решения другой задачи, а именно определения времени затраченого на прохождения круга, при обновлении задачи они были больше для нахождения неожиданных взаимосвязей с target variable.
+# Данные по поводу кругов:
+--- 
+
+The weather dataset provides information about air temperature, track temperature, humidity, pressure, wind direction, and wind speed. Initially, these weather variables were considered for a different task, namely predicting lap time. After the project task was updated, they were kept in the dataset mainly to check whether any unexpected relationships with the target variable could be identified.
+
+The lap data can be summarized as follows:
+```{r}
+summary(laps)
+```
+---
+# Данные о каждом круге хранят информации о гонщике прошедшем этот круг, время на разных секторах, скорость на разных участках трасы, тип шын, позиция и многое другое.
+---
+The lap dataset contains information about each completed lap, including the driver who completed the lap, sector times, speeds at different parts of the track, tyre compound, race position, and other race-related variables. The target variable in this project is `top10` will be obtained after processing a position column from the lap dataset. This variable will indicate whether the lap was completed by a driver positioned in the Top 10.
+
+# 3. Data Tidying
+
+# 3.1 Weather data
+
+Let's take a look on the weather data:
+
+```{r}
+glimpse(weather)
+```
+---
+# Проблемными колонками являються Time - храниться в знаках, Rainfall - из summary было видно что отсутствуют другие значения кроме False, и WindDirection - храниться в градусах, проблема  #заключеться, что 1 градус и 359 градусов кажуться далекими, хотя указывают практически в одном направлении.
+# Начнем с Rainfall, поскольку все наблюдения имееют одно значение, данная колонка не явлееться информативной, поэтому ее можно просто удалить.
+---
+Several columns in the weather dataset required additional attention. The `Time` column was stored as a character variable, `Rainfall` contained only one observed value according to the summary output, and `WindDirection` was stored in degrees. The issue with `WindDirection` is that values such as 1 degree and 359 degrees appear numerically far apart, although they represent almost the same direction.
+
+Let's start with the `Rainfall` variable. Since all observations have the same value, this column does not provide useful information for distinguishing between observations. Therefore, it can be removed from the dataset.
+
+```{r}
+weather %>%
+  select(Rainfall) %>%
+  unique()
+
+weather$Rainfall <- NULL
+```
+---
+# WindDirection variable будет переведена в радианы и разделена до двух колонок синуса и косинуса угла, для лучшей передачи смысла направления.
+---
+The `WindDirection` variable was converted from degrees to radians and then transformed into two separate variables: the sine and cosine of the angle. This transformation helps represent wind direction more appropriately, because it preserves the circular nature of directional data.
+
+```{r}
+weather %<>%
+  select(everything()) %>%
+  mutate(
+    windSin = sin(WindDirection * pi / 180),
+    windCos = cos(WindDirection * pi / 180),
+  ) 
+
+weather$WindDirection <- NULL
+```
+---
+# Time переменная будет преведена к виду секунды от старта гонки. Для этого была создана отдельная функция convert_time.
+---
+
+The `Time` variable was converted into the number of seconds from the start of the race. This makes the variable numeric and easier to use in further preprocessing, merging, and modelling steps. For this purpose, a separate helper function called `convert_time` was created.
+
+```{r}
+convert_time <- function(time) {
+  # Cut the part on the beginning, as I'm sure that there will be only 0 days
+  time <- str_replace(time, "0 days ", "")
+  
+  time <- str_split(time, ":")
+  
+  time <- unlist(time)
+  
+  time <- as.numeric(time)
+  
+  seconds <- time[3]
+  
+  seconds <- seconds + time[2] * 60
+  
+  seconds <- seconds + time[1] * 3600
+  
+  return(seconds)
+}
+
+weather %<>%
+  select(everything()) %>%
+  mutate(
+   Time = map_dbl(Time, convert_time)
+  )
+
+```
+
+This all for tidying the weather data, result looks like this:
+
+```{r}
+glimpse(weather)
+```
+
+# 3.2 Laps data
+
+---
+#FastF1 generated переменная, указывает на данные о круге которые по различным причинам пришлось генерировать. Всего таких 4 круга из 1237 (0.3%). Поскольку згенерированных кругов не так много
+#и реальные данные находяться в достаточном количестве было принято решение удалить данные круги из датасета.
+---
+
+The `FastF1Generated` variable indicates laps for which the data had to be generated by FastF1 for different reasons. In total, there were 4 such laps out of 1237 observations, which represents approximately 0.3% of the dataset.
+
+Since the number of generated laps was very small and there was enough real observed data available, these generated laps were removed from the dataset.
+
+```{r}
+laps %>% select(everything()) %>%
+  filter(FastF1Generated == T)
+
+laps %<>% select(everything()) %>%
+  filter(FastF1Generated != T)
+
+laps$FastF1Generated <- NULL
+```
+---
+# Deleted переменная указывает что результаты этих кругов были анулированные из-за нарушения правил, чтобы не тренеровать модель на данных, которые нарушают правила и поскольку таких кругов всего # 5 из 1233 (0.04%) такие данные было решено удалить. Переменная DeletedReason указывает на причину удаления, которая не нужна, когда у нас остались только круги без нарушений.
+---
+
+The `Deleted` variable indicates whether a lap result was deleted because of a rule violation. To avoid training the model on laps that were not valid according to the race rules, these observations were removed from the dataset. There were only 5 such laps out of 1233 observations, which represents approximately 0.4% of the data.
+
+The `DeletedReason` variable contains the reason why a lap was deleted. Since only valid laps remained after removing deleted laps, this variable was no longer needed and was removed as well.
+
+```{r}
+laps %>% select(Deleted) %>%
+  filter(Deleted==T)
+
+laps %<>% select(everything()) %>%
+  filter(Deleted == F)
+
+laps$Deleted <- NULL
+laps$DeletedReason <- NULL
+```
+---
+#Переменные указывающие на время имеет ту же болезнь что и переменная Time из weather, поэтому используем функцию convert_time и здесь. Важно отметить, что здесь не все перемнные указывают на #время от старта гонки, некоторые указывают на время от начала сессии.
+---
+
+The variables representing time had the same issue as the `Time` variable in the weather dataset. Therefore, the `convert_time` function was used for these variables as well.
+
+It is important to note that not all of these variables represent time from the start of the race. Some of them represent time from the start of the session, so their meaning had to be considered separately during preprocessing.
+
+```{r}
+laps %<>% select(everything()) %>%
+  mutate(
+    across(
+      contains("Time"),
+      ~map_dbl(., convert_time),
+      .names = "{.col}"
+    )
+  )
+```
+---
+# Compound переменная имеет всего 3 варианта: SOFT, MEDIUM and HARD. Поэтому было принято решения сделать данную переменую фактором, чтобы R само разделило ее на dummy variables.
+---
+
+The `Compound` variable has three possible values: `SOFT`, `MEDIUM`, and `HARD`. Since this variable is categorical, it was converted into a factor. In formula-based models, this allows R to represent the variable through dummy variables automatically. For models requiring a numeric input matrix, the factor levels can be converted into dummy variables during preprocessing.
+
+```{r}
+laps %>% select(Compound) %>%
+  unique()
+
+laps$Compound <- as.factor(laps$Compound)
+```
+
+The `TrackStatus` variable describes the condition of the track during a lap. It is encoded as a sequence of digits, where each digit represents a specific track status that occurred during that lap.
+
+For example, a value such as `1254` indicates that several track statuses were present during the lap:
+
+- `1` — green flag
+- `2` — yellow flag
+- `4` — safety car
+- `5` — virtual safety car
+
+The value `3` represents a red flag. However, no red flag periods were observed in this race, so this status was not present in the dataset.
+
+```{r}
+laps %>% select(TrackStatus) %>% 
+  unique()
+
+# make track status character for the easier work
+laps %<>% select(everything()) %>%
+  mutate(
+    TrackStatus = as.character(TrackStatus)
+  ) 
+
+laps %<>% select(everything()) %>%
+  mutate(
+    green_flag = str_detect(TrackStatus, "1"),
+    yellow_flag = str_detect(TrackStatus, "2"),
+    safety_car = str_detect(TrackStatus, "4"),
+    virtual_safety_car = str_detect(TrackStatus, "5"),
+  ) 
+
+laps$TrackStatus <- NULL
+
+
+# green flag is always true, so it's not bringing any new information
+laps$green_flag <- NULL
+```
+---
+# IsAccurate переменная указывает на коректность измерения данных, всего имееться 45 неточных наблюдений из 1228 (3.6%). Поскольку точные данные важны для правильного перформанся модели и #количество неточностей не кртичное, было решено удалить все неточные данные из датасета.
+---
+The `IsAccurate` variable indicates whether the lap data was measured accurately. In total, there were 45 inaccurate observations out of 1228, which represents approximately 3.6% of the dataset.
+
+Since accurate measurements are important for reliable model performance, and the number of inaccurate observations was relatively small, all inaccurate laps were removed from the dataset.
+
+```{r}
+laps %<>% select(everything()) %>%
+  filter(IsAccurate != F)
+
+laps$IsAccurate <- NULL
+```
+
+After removing the inaccurate observations, laps affected by pit stops, virtual safety car, and safety car periods were also excluded. As a result, the corresponding variables contained only `NA` values. Since they no longer provided useful information, they were removed from the dataset.
+
+```{r}
+summary(laps)  
+  
+laps$PitOutTime <- NULL
+laps$PitInTime <- NULL
+laps$virtual_safety_car <- NULL
+laps$safety_car <- NULL
+```
+
+Sector times were removed because they are direct components of lap performance and would dominate the classification task.
+
+The sector session time variables were also removed. These variables describe when each sector was completed within the session. Since the project already includes variables describing race progression, such as lap number, tyre life, and time-related information, the sector session time variables were not considered to add clear additional explanatory value.
+```{r}
+laps %<>% select(!contains("Sector"))
+```
+
+The `LapStartDate` variable was not used as a predictor, because it does not provide meaningful explanatory information for the model. The race takes place on a single date, so this variable does not help distinguish between laps.
+
+The `LapStartTime` variable was kept temporarily and used to join the lap data with the corresponding weather observations. After the merge was completed, it was not treated as a direct modelling variable unless required for further preprocessing.
+
+```{r}
+laps$LapStartDate <- NULL
+```
+
+The `IsPersonalBest` variable indicates whether the lap was the driver's personal best lap. This variable describes the outcome of the completed lap rather than an independent race condition available before the lap is finished.
+
+Since it may directly reflect lap performance and could strongly influence the model prediction, it was not used as a predictor in the final modelling dataset.
+
+```{r}
+laps$IsPersonalBest <- NULL
+```
+
+The `Driver` and `Team` variables identify the driver and the constructor associated with each lap. Since both variables are categorical, they were converted into factors so that R can handle them correctly during modelling.
+
+```{r}
+laps$Driver <- as.factor(laps$Driver)
+laps$Team <- as.factor(laps$Team)
+```
+
+The `DriverNumber` variable was removed from the dataset because it does not provide additional explanatory information for the model. The driver identity is already represented by the `Driver` variable, so keeping both variables would add redundant information.
+
+```{r}
+laps$DriverNumber <- NULL
+```
+
+---
+#Stint это категорическая переменная, поэтому она тоже должна быть приведена к фактору.
+---
+
+The `Stint` variable is categorical, so it was also converted into a factor. This allows R to treat different stints as separate categories rather than as continuous numerical values.
+
+```{r}
+laps %>% select(Stint) %>%
+  unique()
+
+laps$Stint <- as.factor(laps$Stint)
+```
+---
+#Теперь создадим переменную top10 используя переменную position.
+---
+
+Next, the target variable `top10` was created using the `Position` variable. If the driver's position was between 1 and 10, `top10` was set to `TRUE`; otherwise, it was set to `FALSE`.
+
+```{r}
+laps %<>% select(everything()) %>%
+  mutate(
+    top10 = ifelse(Position <= 10, T, F)
+  ) 
+
+laps$Position <- NULL
+```
+
+Lap time is still a direct measure of lap performance and is strongly related to whether a driver is likely to be in the Top 10.
+
+Including `LapTime` would make the classification task too dependent on the realised performance of the lap itself, rather than on broader race-related explanatory variables. Therefore, it was excluded to reduce the risk of overly direct prediction and to keep the model interpretation more meaningful.
+
+```{r}
+laps$LapTime <- NULL
+```
+
+The tidied version of the `laps` dataset looks as follows:
+
+```{r}
+summary(laps)
+```
+
+# 3.3 Merging Weather with Laps
+
+After preprocessing the lap and weather datasets, the next step was to combine them into one modelling dataset. The weather observations were recorded at specific time points, while each lap has its own start time. Therefore, the weather data had to be matched to each lap using time information.
+
+First, the time ranges of the weather data and lap data were checked:
+
+```{r}
+range(weather$Time)
+range(laps$LapStartTime)
+range(laps$Time)
+```
+
+This step was used to make sure that the time variables were on a comparable scale and that the weather data covered the relevant period of the race.
+
+The `Time` variable in the weather dataset was renamed to `weather_time` to make the join clearer and to avoid confusion with time variables from the lap dataset.
+
+```{r}
+weather_join <- weather %>%
+  rename(weather_time = Time)
+```
+
+Then, a temporary `lap_id` variable was created. This was needed because each lap could match several previous weather observations when using a time-based join.
+
+```{r}
+laps_join <- laps %>%
+  mutate(lap_id = row_number())
+```
+
+The lap and weather datasets were joined by matching each lap with weather observations recorded before or at the lap start time. After the join, only the most recent weather observation before the lap start was kept for each lap.
+
+```{r}
+data <- laps_join %>%
+  left_join(
+    weather_join,
+    by = join_by(LapStartTime >= weather_time)
+  ) %>%
+  group_by(lap_id) %>%
+  slice_max(weather_time, n = 1, with_ties = FALSE) %>%
+  ungroup()
+```
+
+Finally, the temporary `lap_id` variable was removed, because it was only needed for the joining process and does not provide explanatory information for the model.
+
+```{r}
+data$lap_id <- NULL
+```
+
+As a result, each lap observation was combined with the closest available weather information recorded before the start of that lap.
+
+As the final step of the data tidying process, the `Time`, `LapStartTime`, and `weather_time` variables were removed from the modelling dataset. These variables were useful during preprocessing, especially for aligning lap observations with the corresponding weather observations.
+
+However, after the datasets were merged, these time variables mainly represented the sequence of events during the race. They were not considered meaningful explanatory variables for the classification task, so they were removed before modelling.
+
+```{r}
+data$Time <- NULL
+data$LapStartTime <- NULL
+data$weather_time <- NULL
+```
+
+# 4. Exploratory Data Analysis
+
+# 4.1 Target Variable Distribution
+
+The target variable shows a moderate class imbalance. In the cleaned dataset, 63.48% of laps belong to the Top 10 class, while 36.52% of laps are outside the Top 10.
+
+This imbalance is not extreme, but it should still be considered during model evaluation. For this reason, metrics such as sensitivity, specificity, balanced accuracy, and ROC/AUC are more informative than accuracy alone.
+
+```{r}
+summary(data)
+```
+
+# 4.2 Independence
+
+The observations are not fully independent, because the dataset contains repeated laps for the same drivers. This means that several observations may share driver-specific or team-specific characteristics.
+
+This limitation should be considered when interpreting the results.
+
+# 4.3 Colinearity
+
+To check collinearity between numerical predictors, a correlation matrix was calculated using only numeric variables and complete observations.
+
+```{r}
+data %>% select(where(is.numeric)) %>%
+  cor(use = "complete.obs")
+```
+
+Several strong correlations were observed, using an absolute correlation above 0.7 as a practical threshold.
+
+The strongest correlations were found between `LapNumber`, `TyreLife`, `Pressure`, and `TrackTemp`. The correlation between `LapNumber` and `TyreLife` is expected, because tyre life usually increases as the race progresses. The relationship between tyre life and track conditions is also meaningful, since track temperature may be connected with tyre degradation and lap performance.
+
+However, the largest collinearity issue appeared between `LapNumber`, `Pressure`, and `TrackTemp`. To reduce redundancy, only one variable from this group was kept. `LapNumber` mainly acts as a lap counter, while `Pressure` and `TrackTemp` provide physical information about race conditions.
+
+The `Pressure` variable had a very narrow range, approximately from 1018 to 1019, which makes it almost constant in this dataset. In contrast, `TrackTemp` varied more clearly, from approximately 40.50 to 49.20. Therefore, `TrackTemp` was kept as the representative variable, while `LapNumber` and `Pressure` were removed from the dataset.
+
+```{r}
+data$LapNumber <- NULL
+data$Pressure <- NULL
+```
+
+# 4.4 Normality Check
+
+Normality was checked as an exploratory step to better understand the distribution of the numerical variables. For most models used in this project, normality is not a strict requirement. It would be more important if a model such as LDA was used. Therefore, at this stage, only a quick normality check was performed, mainly for the speed-related variables.
+
+First, the numerical variables in the dataset were identified:
+
+```{r}
+data %>% select(where(is.numeric)) %>% colnames()
+```
+
+The normality of the speed variables was checked using histograms, Q-Q plots, and the Shapiro-Wilk test. The variables checked were SpeedI1, SpeedI2, SpeedFL, and SpeedST.
+
+```{r}
+# SpeedI1
+
+ggplot(data, aes(x = SpeedI1)) +
+  geom_histogram(bins=30, fill = "red", color="black")
+
+ggplot(data, aes( sample = SpeedI1)) +
+  stat_qq(color = "red") +
+  stat_qq_line()
+
+# Due to the big number of the observations may not show the correct result
+shapiro.test(data$SpeedI1)
+
+# SpeedI2
+
+ggplot(data, aes(x = SpeedI2)) +
+  geom_histogram(bins=30, fill = "blue", color="black")
+
+ggplot(data, aes( sample = SpeedI2)) +
+  stat_qq(color = "blue") +
+  stat_qq_line()
+
+# Due to the big number of the observations may not show the correct result
+shapiro.test(data$SpeedI2)
+
+
+# SpeedFL
+
+ggplot(data, aes(x = SpeedFL)) +
+  geom_histogram(bins=30, fill = "yellow", color="black")
+
+ggplot(data, aes( sample = SpeedFL)) +
+  stat_qq(color = "yellow") +
+  stat_qq_line()
+
+# Due to the big number of the observations may not show the correct result
+shapiro.test(data$SpeedFL)
+
+# SpeedST
+
+ggplot(data, aes(x = SpeedST)) +
+  geom_histogram(bins=30, fill = "green", color="black")
+
+ggplot(data, aes( sample = SpeedST)) +
+  stat_qq(color = "green") +
+  stat_qq_line()
+
+# Due to the big number of the observations may not show the correct result
+shapiro.test(data$SpeedST)
+
+```
+
+The histograms and Q-Q plots show that the speed variables do not closely follow a normal distribution. The Shapiro-Wilk tests also indicate departures from normality. However, because the dataset contains many observations, the Shapiro-Wilk test can be very sensitive even to small deviations from normality. For this reason, the graphical checks were considered together with the test results.
+
+Since the selected modelling methods do not strictly require normally distributed predictors, no transformation was applied at this stage. A deeper normality analysis would be needed only if a model with stronger distributional assumptions, such as LDA, was included.
+
+# 4.5 Feature Scaling
+
+The numerical features are measured on different scales. For example, speed variables, temperature variables, humidity, and tyre life have different units and ranges.
+
+Feature scaling is not required for all models. Tree-based models, such as Random Forest, can usually work with variables on different scales. However, scaling is important for distance-based or margin-based models, such as SVM, and would also be relevant if LDA or QDA were used.
+
+Therefore, scaling was not treated as a general cleaning step for the whole dataset. Instead, numerical features were scaled later only for the models that required it. To avoid data leakage, scaling parameters were calculated using the training data only and then applied to the test sets.
+
+```{r}
+summary(data)
+```
+
+# 4.6 Outliers
+
+As part of the exploratory data analysis, potential outliers were examined in the numerical variables. A simple IQR-based function was created to count the number of observations outside the standard outlier range, defined as values below \(Q1 - 1.5 \times IQR\) or above \(Q3 + 1.5 \times IQR\).
+
+```{r}
+outliers <- function(x) {
+  q1 <- quantile(x, 0.25, na.rm=T)
+  q3 <- quantile(x, 0.75, na.rm=T)
+  iqr <- q3 - q1
+  
+  lower <- q1 - 1.5*iqr
+  upper <- q3 + 1.5*iqr
+  
+  sum(x < lower | x > upper, na.rm = T)
+}
+
+data %>% select(where(is.numeric)) %>%
+ summarise(
+   across(
+     everything(),
+     outliers
+   )
+ )
+```
+After identifying the variables with the highest number of outliers, boxplots were used to inspect them visually. The focus was placed on `SpeedI1`, `SpeedFL`, `SpeedST`, and `WindSpeed`.
+
+```{r}
+ggplot(data, aes(x=SpeedI1, fill = top10)) +
+  geom_boxplot()
+
+ggplot(data, aes(x=SpeedFL, fill = top10)) +
+  geom_boxplot()
+
+ggplot(data, aes(x=SpeedST, fill = top10)) +
+  geom_boxplot()
+
+ggplot(data, aes(x=WindSpeed, fill = top10)) +
+  geom_boxplot()
+```
+
+At this stage, the outliers were kept in the dataset. In most cases, they appeared as relatively low speed values. These observations were further checked against the `yellow_flag` variable to see whether they were clearly associated with specific race conditions.
+
+```{r}
+ggplot(data, aes(x=SpeedFL, fill = yellow_flag)) +
+  geom_boxplot()
+
+ggplot(data, aes(x=SpeedI1, fill = yellow_flag)) +
+  geom_boxplot()
+
+ggplot(data, aes(x=SpeedST, fill = yellow_flag)) +
+  geom_boxplot()
+
+ggplot(data, aes(x=WindSpeed, fill = yellow_flag)) +
+  geom_boxplot()
+```
+
+No clear connection was found between these outliers and a specific condition such as a yellow flag period. Similar outlying values appeared both when `yellow_flag` was present and when it was not. Pit stop laps had already been removed from the dataset, and another possible explanation, such as traffic, could not be verified from the available data.
+
+For this reason, the outliers were retained in the dataset at this stage. However, they may still contain meaningful information.
+
+# 4.7 Homoscedasticity
+
+Homoscedasticity was considered as an additional exploratory check. This assumption is not required for most of the models used in this project, especially for tree-based models and SVM.
+
+However, homoscedasticity would be more relevant if models such as LDA or QDA were included, because these methods rely more strongly on assumptions about the distribution and variance structure of the predictors.
+
+For this reason, a detailed homoscedasticity analysis was not performed at this stage. If LDA or QDA were selected later as part of the modelling strategy, this assumption would need to be checked more carefully.
+
+# 4.8 Linearity Check
+
+A linearity check was performed to understand whether the relationship between the numerical predictors and the target variable appears approximately linear. This check is mainly relevant for simpler linear models, such as Logistic Regression. It is not a strict requirement for Random Forest or SVM, but it helps to understand whether nonlinear models may be useful.
+
+First, the numerical variables were listed:
+
+```{r}
+data %>% select(where(is.numeric)) %>%
+  colnames()
+```
+
+For each numerical predictor, scatter plots were created against the binary target variable, with a LOESS smoothing curve added to show the general relationship.
+
+```{r}
+# Not linear
+ggplot(data, aes(x = SpeedI1, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# ~ Linear
+ggplot(data, aes(x = SpeedI2, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# Not linear
+ggplot(data, aes(x = SpeedFL, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# Not linear
+ggplot(data, aes(x = SpeedST, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# Linear
+ggplot(data, aes(x = TyreLife, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+```
+
+The speed variables did not show a consistently linear relationship with the target variable. `SpeedI2` showed the closest approximately linear pattern, while `SpeedI1`, `SpeedFL`, and `SpeedST` appeared more nonlinear. `TyreLife` showed a clearer relationship with the target and was therefore considered potentially useful for modelling.
+
+Additional weather-related variables were also checked:
+
+```{r}
+# Not useful
+ggplot(data, aes(x = AirTemp, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# Not useful 
+ggplot(data, aes(x = Humidity, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# Not useful
+ggplot(data, aes(x = TrackTemp, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# Not useful
+ggplot(data, aes(x = WindSpeed, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# Not useful
+ggplot(data, aes(x = windSin, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+
+# Not useful
+ggplot(data, aes(x = windCos, y = as.numeric(top10))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "blue")
+```
+
+These variables did not show a clear individual relationship with the target variable.
+
+Categorical values:
+
+```{r}
+data %>% select(!where(is.numeric)) %>%
+  colnames()
+```
+
+```{r}
+ggplot(data, aes(x = Driver, fill = top10)) +
+  geom_bar(position = "fill")
+
+ggplot(data, aes(x = Stint, fill = top10)) +
+  geom_bar(position = "fill")
+
+ggplot(data, aes(x = Compound, fill = top10)) +
+  geom_bar(position = "fill")
+
+ggplot(data, aes(x = FreshTyre, fill = top10)) +
+  geom_bar(position = "fill")
+
+ggplot(data, aes(x = Team, fill = top10)) +
+  geom_bar(position = "fill")
+
+ggplot(data, aes(x = yellow_flag, fill = top10)) +
+  geom_bar(position = "fill")
+```
+
+he categorical plots showed that some variables, especially `Driver`, `Team`, and `FreshTyre`, have a strong visible relationship with the target variable. However, `Driver` and `Team` should be interpreted carefully, because they may capture general driver or car performance rather than pure lap-level race conditions.
+
+`Stint` may contain useful information related to race strategy and position. `Compound` was more difficult to interpret because there were very few observations with soft tyres. The `yellow_flag` variable did not show a strong visible relationship with the target variable.
+
+Overall, the linearity check suggested that the relationship between predictors and the target variable is not purely linear. This supports the decision to compare Logistic Regression with more flexible nonlinear models.
+
+# 4.9 Results
+
+The exploratory data analysis helped identify the main characteristics and potential issues in the modelling dataset.First, the target variable showed a moderate class imbalance. The Top 10 class represented 63.48% of the observations, while 36.52% of laps were outside the Top 10. This imbalance is not extreme, but it should be considered during model evaluation, so accuracy alone is not sufficient.
+
+The independence check showed that observations are not fully independent, because the dataset contains repeated laps from the same drivers. This limitation should be considered when interpreting the results, although the data can still be used for predictive model comparison.
+
+The collinearity analysis identified strong correlations between several numerical predictors, especially `LapNumber`, `Pressure`, `TrackTemp`, and `TyreLife`. To reduce redundancy, `LapNumber` and `Pressure` were removed, while `TrackTemp` was kept as a more meaningful representative of track conditions.
+
+The normality check showed that the speed-related variables do not closely follow a normal distribution. Since most models considered in this project do not require normally distributed predictors, no transformation was applied at this stage.
+
+The feature scaling check showed that numerical predictors are measured on different scales. Scaling was therefore planned for models that require it, especially SVM, while tree-based models do not require scaling in the same way.
+
+The outlier analysis showed that some variables, especially speed-related variables, contain outlying observations. These outliers were not clearly connected to yellow flag periods or other confirmed race conditions. Therefore, they were kept in the dataset at this stage, with the possibility of checking their effect on model performance later.
+
+Homoscedasticity was not analysed in detail, because it is not a strict assumption for the main models considered in this project. A deeper check would be needed only if models with stronger variance assumptions, such as LDA, were used.
+
+The linearity check suggested that the relationship between predictors and the target variable is not purely linear. This supports the decision to compare a simple interpretable model with more flexible nonlinear models in the next stage of the project.Overall, the EDA provided a basis for selecting a stable and interpretable feature set for modelling, while also highlighting limitations that should be considered when interpreting the final results.
+
+
+# 5 Modeling Strategy
+
+

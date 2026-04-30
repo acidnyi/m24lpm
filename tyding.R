@@ -97,7 +97,7 @@ view(laps)
 
 glimpse(laps)
 
-laps %>% summary
+summary(laps)
 
 # There are only 4 laps data that were artificially created
 # So, we decided remove them
@@ -143,7 +143,6 @@ summary(laps)
 
 # COMPOUND TYPE
 # There are 3 types on the tyres
-# Due to the problems with the linear regression during if we split this feature into 3 variables
 # We decided to keep the Compound type as factor, so R can split them when using the model
 
 laps %>% select(Compound) %>%
