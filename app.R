@@ -112,7 +112,7 @@ ui <- fluidPage(
           selectInput(
             "custom_model_type",
             "Model type",
-            choices = c("Random Forest", "SVM")
+            choices = c("Logistic Regression", "Random Forest", "SVM")
           ),
           
           conditionalPanel(
@@ -220,7 +220,15 @@ server <- function(input, output) {
   custom_model <- reactive({
     req(length(input$custom_predictors) > 0)
     
-    if (input$custom_model_type == "Random Forest") {
+    if (input$custom_model_type == "Logistic Regression") {
+      
+      glm(
+        formula = custom_formula(),
+        data = train_sc1,
+        family = binomial
+      )
+    }
+    else if (input$custom_model_type == "Random Forest") {
       
       randomForest(
         formula = custom_formula(),
@@ -243,7 +251,7 @@ server <- function(input, output) {
   })
   
   custom_test_data <- reactive({
-    if(input$custom_model_type == "Random Forest"){
+    if(input$custom_model_type != "SVM"){
       data <- test_sc1
     } else{
       data <- test_svm
@@ -257,7 +265,11 @@ server <- function(input, output) {
     model <- custom_model()
     data <- custom_test_data()
     
-    if (input$custom_model_type == "Random Forest") {
+    
+    if (input$custom_model_type == "Logistic Regression") {
+      predict(model, newdata = data, type = "response")
+      
+    }  else if (input$custom_model_type == "Random Forest") {
       predict(model, newdata = data, type = "prob")[, "TRUE"]
     } else {
       pred <- predict(model, newdata = data, probability = TRUE)
@@ -266,7 +278,7 @@ server <- function(input, output) {
   })
   
   custom_preds <- reactive({
-    if(input$custom_model_type == "Random Forest") {
+    if(input$custom_model_type != "SVM") {
       factor(
         ifelse(custom_probs() >= input$custom_threshold, "TRUE", "FALSE"),
         levels = levels(test_sc1$top10)
@@ -332,7 +344,7 @@ server <- function(input, output) {
   })
   
   output$custom_roc_plot <- renderPlot({
-    if(input$custom_model_type == "Random Forest") {
+    if(input$custom_model_type != "SVM") {
       roc_obj <- roc(
         response = test_sc1$top10,
         predictor = custom_probs(),
@@ -361,7 +373,7 @@ server <- function(input, output) {
   output$custom_confusion <- renderPrint({
     req(custom_preds())
     
-    if(input$custom_model_type == "Random Forest") {
+    if(input$custom_model_type != "SVM") {
       confusionMatrix(
         custom_preds(),
         test_sc1$top10,
