@@ -839,4 +839,12 @@ saveRDS(roc_rf, "models/roc_rf.rds")
 saveRDS(roc_reduced_rf, "models/roc_reduced_rf.rds")
 saveRDS(roc_svm, "models/roc_svm.rds")
 
+saveRDS(train_sc1, "models/train_sc1.rds")
+saveRDS(test_sc1, "models/test_sc1.rds")
+
+saveRDS(train_svm, "models/train_svm.rds")
+saveRDS(test_svm, "models/test_svm.rds")
+
+
 data
+
