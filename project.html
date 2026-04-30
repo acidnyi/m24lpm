@@ -2661,6 +2661,616 @@ Random Forest and SVM both improve performance substantially. Among
 them, SVM achieved the best overall performance, while Random Forest
 remained very close and offered somewhat better interpretability through
 feature importance.</p>
+<div id="first-scenario-summary" class="section level2">
+<h2>6.5 First Scenario Summary</h2>
+<p>The comparison of the three classification models shows that model
+flexibility matters for this task. Logistic Regression provided a useful
+and interpretable baseline, but its performance was clearly lower than
+the nonlinear models.</p>
+<p>Random Forest and SVM both performed strongly, with high sensitivity,
+balanced accuracy, and AUC. SVM achieved the best overall results, but
+only by a small margin over Random Forest.</p>
+<p>This means that if the priority is predictive performance, SVM is the
+strongest choice in Scenario 1. If a better balance between performance
+and interpretability is preferred, Random Forest can also be considered
+a strong option.</p>
+</div>
+</div>
+<div id="feature-selection" class="section level1">
+<h1>7. Feature Selection</h1>
+<p>In Scenario 3, feature selection is analysed for the same
+classification task. The goal is to check which predictors are useful
+for identifying Top 10 laps and whether a smaller feature set can keep
+similar model performance.</p>
+<p>This part is not only about removing variables. It is also used to
+compare how different feature selection methods behave. A feature may
+look unimportant in one model, but still be useful in another model.
+Because of this, feature selection is checked separately for Logistic
+Regression and Random Forest.</p>
+<p>The same train, validation, and test split from Scenario 1 is used
+here, so the results can be compared in a consistent way.</p>
+<div id="stepwise-logistic-regression" class="section level2">
+<h2>7.1 Stepwise Logistic Regression</h2>
+<p>The first feature selection step was done using Logistic Regression.
+Since Logistic Regression is an interpretable model, it is useful not
+only for prediction, but also for checking which predictors have a clear
+statistical contribution.</p>
+<p>Two approaches were used:</p>
+<ol style="list-style-type: decimal">
+<li>stepwise selection based on AIC;</li>
+<li>reduction based on statistical significance of the
+coefficients.</li>
+</ol>
+<p>The purpose was to check whether the full feature set from Scenario 1
+can be simplified without losing too much predictive performance.</p>
+<div id="full-logistic-regression-model" class="section level3">
+<h3>Full Logistic Regression Model</h3>
+<p>First, the full Logistic Regression model was evaluated using the
+original feature set from Scenario 1.</p>
+<pre class="r"><code>lg_probs &lt;- predict(lg_model, newdata = test_sc1, type = &quot;response&quot;)
+
+roc_lg &lt;- roc(test_sc1$top10, lg_probs)</code></pre>
+<pre><code>## Setting levels: control = FALSE, case = TRUE</code></pre>
+<pre><code>## Setting direction: controls &lt; cases</code></pre>
+<pre class="r"><code>lg_preds &lt;- ifelse(lg_probs &gt; 0.6, T, F)
+
+# Metrics
+confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = &quot;TRUE&quot;)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction FALSE TRUE
+##      FALSE    60   23
+##      TRUE     27  128
+##                                           
+##                Accuracy : 0.7899          
+##                  95% CI : (0.7326, 0.8399)
+##     No Information Rate : 0.6345          
+##     P-Value [Acc &gt; NIR] : 1.567e-07       
+##                                           
+##                   Kappa : 0.5426          
+##                                           
+##  Mcnemar&#39;s Test P-Value : 0.6714          
+##                                           
+##             Sensitivity : 0.8477          
+##             Specificity : 0.6897          
+##          Pos Pred Value : 0.8258          
+##          Neg Pred Value : 0.7229          
+##              Prevalence : 0.6345          
+##          Detection Rate : 0.5378          
+##    Detection Prevalence : 0.6513          
+##       Balanced Accuracy : 0.7687          
+##                                           
+##        &#39;Positive&#39; Class : TRUE            
+## </code></pre>
+<pre class="r"><code>AIC(lg_model)</code></pre>
+<pre><code>## [1] 677.193</code></pre>
+<pre class="r"><code>auc(roc_lg)</code></pre>
+<pre><code>## Area under the curve: 0.8834</code></pre>
+</div>
+<div id="stepwise-logistic-regression-1" class="section level3">
+<h3>Stepwise Logistic Regression</h3>
+<p>Stepwise Logistic Regression was used as an algorithmic feature
+selection method. The model started with the full Logistic Regression
+model from Scenario 1 and then tested whether adding or removing
+predictors improved the AIC.</p>
+<pre class="r"><code>step_model &lt;- step(
+  lg_model,
+  direction = &quot;both&quot;,
+  trace=TRUE
+)</code></pre>
+<pre><code>## Start:  AIC=677.19
+## top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound
+## 
+##            Df Deviance    AIC
+## - SpeedI1   1   659.78 675.78
+## &lt;none&gt;          659.19 677.19
+## - Compound  2   665.97 679.97
+## - TyreLife  1   696.14 712.14
+## - SpeedFL   1   700.53 716.53
+## - Stint     2   737.31 751.31
+## - SpeedI2   1   837.16 853.16
+## 
+## Step:  AIC=675.78
+## top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL + Compound
+## 
+##            Df Deviance    AIC
+## &lt;none&gt;          659.78 675.78
+## + SpeedI1   1   659.19 677.19
+## - Compound  2   666.22 678.22
+## - TyreLife  1   699.54 713.54
+## - SpeedFL   1   701.13 715.13
+## - Stint     2   737.64 749.64
+## - SpeedI2   1   846.89 860.89</code></pre>
+<p>The stepwise procedure suggested removing <code>SpeedI1</code>. The
+full model had an AIC of 677.19, while the model without
+<code>SpeedI1</code> had a slightly lower AIC of 675.78. This means that
+removing <code>SpeedI1</code> made the model a little simpler and
+slightly better according to AIC.</p>
+<p>It is also interesting that <code>Compound</code> stayed in the
+model, even though its individual levels were not statistically
+significant in the Logistic Regression summary. This can happen because
+stepwise selection evaluates the model as a whole. A variable may not
+look significant on its own, but it can still slightly improve the model
+in combination with other predictors. However, this result should be
+interpreted only as a Logistic Regression-based selection. It does not
+mean that the same reduced feature set will also be best for Random
+Forest or SVM.</p>
+<p>Based on the stepwise result, a reduced Logistic Regression model was
+fitted without <code>SpeedI1</code>.</p>
+<pre class="r"><code>lg_step_model &lt;- glm(data=train_sc1,
+                family = binomial,
+                top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL + Compound
+)
+
+lg_step_probs &lt;- predict(lg_step_model, newdata = test_sc1, type=&quot;response&quot;)
+
+roc_step_lg &lt;- roc(test_sc1$top10, lg_step_probs)</code></pre>
+<pre><code>## Setting levels: control = FALSE, case = TRUE</code></pre>
+<pre><code>## Setting direction: controls &lt; cases</code></pre>
+<pre class="r"><code>lg_step_preds &lt;- ifelse(lg_step_probs &gt; 0.6, T, F)
+
+confusionMatrix(factor(lg_step_preds), factor(test_sc1$top10), positive =&quot;TRUE&quot;)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction FALSE TRUE
+##      FALSE    62   20
+##      TRUE     25  131
+##                                           
+##                Accuracy : 0.8109          
+##                  95% CI : (0.7553, 0.8586)
+##     No Information Rate : 0.6345          
+##     P-Value [Acc &gt; NIR] : 2.246e-09       
+##                                           
+##                   Kappa : 0.5873          
+##                                           
+##  Mcnemar&#39;s Test P-Value : 0.551           
+##                                           
+##             Sensitivity : 0.8675          
+##             Specificity : 0.7126          
+##          Pos Pred Value : 0.8397          
+##          Neg Pred Value : 0.7561          
+##              Prevalence : 0.6345          
+##          Detection Rate : 0.5504          
+##    Detection Prevalence : 0.6555          
+##       Balanced Accuracy : 0.7901          
+##                                           
+##        &#39;Positive&#39; Class : TRUE            
+## </code></pre>
+<pre class="r"><code>AIC(lg_step_model)</code></pre>
+<pre><code>## [1] 675.785</code></pre>
+<pre class="r"><code>auc(roc_step_lg)</code></pre>
+<pre><code>## Area under the curve: 0.8843</code></pre>
+<p>fter removing <code>SpeedI1</code>, the model became slightly better
+than the full Logistic Regression model. The AIC decreased from 677.19
+to 675.79</p>
+<p>The test performance also improved. Accuracy increased from 0.7899 to
+0.8109, sensitivity increased from 0.8477 to 0.8675, and specificity
+increased from 0.6897 to 0.7126. Balanced accuracy also improved from
+0.7687 to 0.7901.</p>
+<p>This means that removing <code>SpeedI1</code> made the model simpler
+and also improved its test performance. For Logistic Regression,
+<code>SpeedI1</code> does not seem to add useful information once the
+other predictors are already included.</p>
+</div>
+<div id="reduction-based-on-statistical-significance" class="section level3">
+<h3>Reduction Based on Statistical Significance</h3>
+<p>The Logistic Regression model was also checked using the statistical
+significance of the coefficients.</p>
+<pre class="r"><code># Reduce by the significance of the features
+# The full model, insignificant:
+# SpeedI1, CompoundSoft, CompoundMedium and Stint4
+summary(lg_model)</code></pre>
+<pre><code>## 
+## Call:
+## glm(formula = top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + 
+##     SpeedFL + Compound, family = binomial, data = train_sc1)
+## 
+## Coefficients:
+##                  Estimate Std. Error z value Pr(&gt;|z|)    
+## (Intercept)    -9.515e+00  5.242e+00  -1.815   0.0695 .  
+## SpeedI2         2.060e-01  1.855e-02  11.106  &lt; 2e-16 ***
+## TyreLife       -3.829e-02  6.732e-03  -5.687 1.29e-08 ***
+## Stint3         -3.563e+00  4.715e-01  -7.557 4.13e-14 ***
+## Stint4         -8.026e-01  2.471e+03   0.000   0.9997    
+## SpeedI1         8.611e-03  1.131e-02   0.761   0.4465    
+## SpeedFL        -1.035e-01  1.854e-02  -5.580 2.41e-08 ***
+## CompoundMEDIUM -3.236e-01  2.074e-01  -1.560   0.1187    
+## CompoundSOFT   -1.883e+01  2.400e+03  -0.008   0.9937    
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## (Dispersion parameter for binomial family taken to be 1)
+## 
+##     Null deviance: 928.77  on 707  degrees of freedom
+## Residual deviance: 659.19  on 699  degrees of freedom
+## AIC: 677.19
+## 
+## Number of Fisher Scoring iterations: 15</code></pre>
+<pre class="r"><code># Results on the model without SpeedI1, insignificant:
+# Stint4, CompoundMedium, CompoundSoft
+# Remove the Compound on this step, because Stint and Compound are factors,
+# but Stint3 is significant, while both Compounds are insignificant
+summary(lg_step_model)</code></pre>
+<pre><code>## 
+## Call:
+## glm(formula = top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL + 
+##     Compound, family = binomial, data = train_sc1)
+## 
+## Coefficients:
+##                  Estimate Std. Error z value Pr(&gt;|z|)    
+## (Intercept)    -8.193e+00  4.977e+00  -1.646   0.0997 .  
+## SpeedI2         2.076e-01  1.845e-02  11.249  &lt; 2e-16 ***
+## TyreLife       -3.604e-02  5.983e-03  -6.024 1.70e-09 ***
+## Stint3         -3.470e+00  4.471e-01  -7.761 8.45e-15 ***
+## Stint4         -8.827e-01  2.471e+03   0.000   0.9997    
+## SpeedFL        -1.036e-01  1.862e-02  -5.566 2.61e-08 ***
+## CompoundMEDIUM -3.128e-01  2.071e-01  -1.511   0.1309    
+## CompoundSOFT   -1.867e+01  2.400e+03  -0.008   0.9938    
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## (Dispersion parameter for binomial family taken to be 1)
+## 
+##     Null deviance: 928.77  on 707  degrees of freedom
+## Residual deviance: 659.78  on 700  degrees of freedom
+## AIC: 675.78
+## 
+## Number of Fisher Scoring iterations: 15</code></pre>
+<p>In the full model, <code>SpeedI1</code>, <code>CompoundMEDIUM</code>,
+<code>CompoundSOFT</code>, and <code>Stint4</code> were not
+statistically significant. After removing <code>SpeedI1</code>, the
+remaining insignificant terms were <code>Stint4</code>,
+<code>CompoundMEDIUM</code>, and <code>CompoundSOFT</code>.</p>
+<p>Since <code>Stint</code> and <code>Compound</code> are factor
+variables, they should not be judged only by one individual dummy
+coefficient. <code>Stint</code> was kept because one of its levels was
+significant, while both levels of <code>Compound</code> were
+insignificant. Because of this, a second reduced model was fitted
+without <code>Compound</code>.</p>
+<pre class="r"><code>lg_reduced_model &lt;- glm(data=train_sc1,
+                        family = binomial,
+                        top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL
+)
+
+summary(lg_reduced_model)</code></pre>
+<pre><code>## 
+## Call:
+## glm(formula = top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL, family = binomial, 
+##     data = train_sc1)
+## 
+## Coefficients:
+##               Estimate Std. Error z value Pr(&gt;|z|)    
+## (Intercept)  -9.211030   4.765347  -1.933   0.0532 .  
+## SpeedI2       0.202696   0.018155  11.165  &lt; 2e-16 ***
+## TyreLife     -0.034373   0.005905  -5.821 5.86e-09 ***
+## Stint3       -3.450381   0.440411  -7.834 4.71e-15 ***
+## Stint4      -19.359883 594.554182  -0.033   0.9740    
+## SpeedFL      -0.097018   0.017688  -5.485 4.14e-08 ***
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## (Dispersion parameter for binomial family taken to be 1)
+## 
+##     Null deviance: 928.77  on 707  degrees of freedom
+## Residual deviance: 666.22  on 702  degrees of freedom
+## AIC: 678.22
+## 
+## Number of Fisher Scoring iterations: 15</code></pre>
+<pre class="r"><code>lg_reduced_probs &lt;- predict(lg_reduced_model, newdata = test_sc1, type=&quot;response&quot;)
+
+roc_reduced_lg &lt;- roc(test_sc1$top10, lg_reduced_probs)</code></pre>
+<pre><code>## Setting levels: control = FALSE, case = TRUE</code></pre>
+<pre><code>## Setting direction: controls &lt; cases</code></pre>
+<pre class="r"><code>lg_reduced_preds &lt;- ifelse(lg_reduced_probs &gt; 0.6, T, F)
+
+confusionMatrix(factor(lg_reduced_preds), factor(test_sc1$top10), positive =&quot;TRUE&quot;)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction FALSE TRUE
+##      FALSE    58   22
+##      TRUE     29  129
+##                                           
+##                Accuracy : 0.7857          
+##                  95% CI : (0.7281, 0.8361)
+##     No Information Rate : 0.6345          
+##     P-Value [Acc &gt; NIR] : 3.397e-07       
+##                                           
+##                   Kappa : 0.53            
+##                                           
+##  Mcnemar&#39;s Test P-Value : 0.4008          
+##                                           
+##             Sensitivity : 0.8543          
+##             Specificity : 0.6667          
+##          Pos Pred Value : 0.8165          
+##          Neg Pred Value : 0.7250          
+##              Prevalence : 0.6345          
+##          Detection Rate : 0.5420          
+##    Detection Prevalence : 0.6639          
+##       Balanced Accuracy : 0.7605          
+##                                           
+##        &#39;Positive&#39; Class : TRUE            
+## </code></pre>
+<pre class="r"><code>AIC(lg_reduced_model)</code></pre>
+<pre><code>## [1] 678.2153</code></pre>
+<pre class="r"><code>auc(roc_reduced_lg)</code></pre>
+<pre><code>## Area under the curve: 0.8739</code></pre>
+<p>After removing <code>Compound</code>, the model became worse.
+Accuracy decreased to 0.7857, balanced accuracy decreased to 0.7605, and
+AUC decreased to 0.8739. The AIC also increased to 678.22.</p>
+<p>This means that, even though <code>Compound</code> was not
+statistically significant in the coefficient table, removing it did not
+improve the model. It may still help the model slightly when used
+together with the other predictors.</p>
+<p>Because of this, the stepwise model without <code>SpeedI1</code> was
+kept as the better reduced Logistic Regression model.</p>
+</div>
+<div id="summary-3" class="section level3">
+<h3>Summary</h3>
+<p>For Logistic Regression, the best reduced model was the stepwise
+model without <code>SpeedI1</code>.</p>
+<p>This model was simpler than the full model and performed slightly
+better on the test set. It improved accuracy, sensitivity, specificity,
+balanced accuracy, AIC, and AUC. Because of this, <code>SpeedI1</code>
+can be removed from the Logistic Regression feature set.</p>
+<p>The further reduction based on statistical significance, where
+<code>Compound</code> was also removed, did not improve the model. Even
+though <code>Compound</code> was not significant in the coefficient
+table, removing it made AIC, AUC, and balanced accuracy worse.</p>
+<p>This shows that feature selection should not be based only on
+p-values. A feature can be statistically insignificant by itself, but
+still help the model when combined with other predictors.</p>
+</div>
+</div>
+<div id="random-forest-feature-selection" class="section level2">
+<h2>7.2 Random Forest Feature Selection</h2>
+<div id="full-random-forest" class="section level3">
+<h3>Full Random Forest</h3>
+<p>Feature selection was also checked for the Random Forest model. This
+is important because Random Forest can use variables differently from
+Logistic Regression. A predictor that is not useful in a linear model
+may still help a tree-based model.</p>
+<p>First, the full Random Forest model from Scenario 1 was evaluated
+again.</p>
+<pre class="r"><code>rf_preds &lt;- predict(rf_model, newdata = test_sc1)
+
+confusionMatrix(rf_preds, test_sc1$top10, positive = &quot;TRUE&quot;)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction FALSE TRUE
+##      FALSE    70    9
+##      TRUE     17  142
+##                                          
+##                Accuracy : 0.8908         
+##                  95% CI : (0.844, 0.9274)
+##     No Information Rate : 0.6345         
+##     P-Value [Acc &gt; NIR] : &lt;2e-16         
+##                                          
+##                   Kappa : 0.7598         
+##                                          
+##  Mcnemar&#39;s Test P-Value : 0.1698         
+##                                          
+##             Sensitivity : 0.9404         
+##             Specificity : 0.8046         
+##          Pos Pred Value : 0.8931         
+##          Neg Pred Value : 0.8861         
+##              Prevalence : 0.6345         
+##          Detection Rate : 0.5966         
+##    Detection Prevalence : 0.6681         
+##       Balanced Accuracy : 0.8725         
+##                                          
+##        &#39;Positive&#39; Class : TRUE           
+## </code></pre>
+<pre class="r"><code>auc(roc_rf)</code></pre>
+<pre><code>## Area under the curve: 0.9335</code></pre>
+<p>The full Random Forest model performed well on the test set. It
+reached an accuracy of 0.8908, sensitivity of 0.9404, specificity of
+0.8046, balanced accuracy of 0.8725, and AUC of 0.9335.</p>
+</div>
+<div id="rfe-random-forest" class="section level3">
+<h3>RFE Random Forest</h3>
+<p>Next, Recursive Feature Elimination was used. This method tests
+different subset sizes and checks which number of predictors gives the
+best cross-validated performance.</p>
+<pre class="r"><code># RFE 
+x_train &lt;- train_sc1 %&gt;% select(-top10)
+y_train &lt;- train_sc1$top10
+
+ctrl &lt;- rfeControl(
+  functions = rfFuncs,
+  method = &quot;cv&quot;,
+  number = 5
+)
+
+set.seed(29)
+rfe_model &lt;- rfe(
+  x = x_train,
+  y = y_train,
+  sizes = c(2,3,4,5,6),
+  ntree = 100,
+  mtry = 5,
+  nodesize = 3,
+  rfeControl = ctrl
+)</code></pre>
+<pre><code>## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range
+## Warning in randomForest.default(x, y, importance = TRUE, ...): invalid mtry:
+## reset to within valid range</code></pre>
+<pre class="r"><code>rfe_model</code></pre>
+<pre><code>## 
+## Recursive feature selection
+## 
+## Outer resampling method: Cross-Validated (5 fold) 
+## 
+## Resampling performance over subset size:
+## 
+##  Variables Accuracy  Kappa AccuracySD KappaSD Selected
+##          2   0.7218 0.3936    0.02914 0.07297         
+##          3   0.7529 0.4656    0.02614 0.04525         
+##          4   0.8121 0.5909    0.02499 0.05553         
+##          5   0.8502 0.6717    0.03877 0.08822         
+##          6   0.8587 0.6910    0.02629 0.06358        *
+## 
+## The top 5 variables (out of 6):
+##    SpeedI2, SpeedFL, Stint, SpeedI1, TyreLife</code></pre>
+<pre class="r"><code># RFE keep all predictors
+predictors(rfe_model)</code></pre>
+<pre><code>## [1] &quot;SpeedI2&quot;  &quot;SpeedFL&quot;  &quot;Stint&quot;    &quot;SpeedI1&quot;  &quot;TyreLife&quot; &quot;Compound&quot;</code></pre>
+<p>The RFE result selected all 6 predictors:</p>
+<ul>
+<li><code>SpeedI2</code></li>
+<li><code>SpeedFL</code></li>
+<li><code>Stint</code></li>
+<li><code>SpeedI1</code></li>
+<li><code>TyreLife</code></li>
+<li><code>Compound</code></li>
+</ul>
+<p>The cross-validation results also showed that performance improved as
+more variables were included. The best accuracy was reached with all 6
+predictors, so RFE did not suggest reducing the Random Forest feature
+set.</p>
+</div>
+<div id="reduction-based-on-statistical-importance" class="section level3">
+<h3>Reduction Based on Statistical Importance</h3>
+<p>The Random Forest importance table was then checked to see whether
+any predictor had very low importance.</p>
+<pre class="r"><code># Remove the least significant predictor
+# least improtant predictor is Compound, let&#39;s remove it as model shows
+# and see the resutl
+rf_model$importance</code></pre>
+<pre><code>##               FALSE       TRUE MeanDecreaseAccuracy MeanDecreaseGini
+## SpeedI2  0.18518789 0.13231226           0.15133996         90.31792
+## TyreLife 0.07505993 0.03827195           0.05192831         53.24394
+## Stint    0.05381771 0.05927127           0.05715783         21.23272
+## SpeedI1  0.05560201 0.06697303           0.06277028         54.52434
+## SpeedFL  0.10285647 0.12119261           0.11418636         73.80912
+## Compound 0.03193322 0.01595512           0.02180863         13.97074</code></pre>
+<p>According to the importance values, <code>Compound</code> was the
+least important predictor. Because of this, an additional reduced Random
+Forest model was fitted without <code>Compound</code>.</p>
+<pre class="r"><code>rf_reduced_model &lt;- randomForest(
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL,
+  data = train_sc1,
+  ntree = 100,
+  mtry = 5,
+  nodesize = 3,
+  replace = TRUE,
+  importance = TRUE
+)
+
+rf_reduced_probs &lt;- predict(rf_reduced_model, newdata = test_sc1, type=&quot;prob&quot;)[, &quot;TRUE&quot;]
+
+roc_reduced_rf &lt;- roc(test_sc1$top10, rf_reduced_probs)</code></pre>
+<pre><code>## Setting levels: control = FALSE, case = TRUE</code></pre>
+<pre><code>## Setting direction: controls &lt; cases</code></pre>
+<pre class="r"><code>rf_reduced_preds &lt;- predict(rf_reduced_model, newdata = test_sc1)
+
+confusionMatrix(rf_reduced_preds, test_sc1$top10, positive = &quot;TRUE&quot;)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction FALSE TRUE
+##      FALSE    70   12
+##      TRUE     17  139
+##                                           
+##                Accuracy : 0.8782          
+##                  95% CI : (0.8297, 0.9169)
+##     No Information Rate : 0.6345          
+##     P-Value [Acc &gt; NIR] : &lt;2e-16          
+##                                           
+##                   Kappa : 0.7341          
+##                                           
+##  Mcnemar&#39;s Test P-Value : 0.4576          
+##                                           
+##             Sensitivity : 0.9205          
+##             Specificity : 0.8046          
+##          Pos Pred Value : 0.8910          
+##          Neg Pred Value : 0.8537          
+##              Prevalence : 0.6345          
+##          Detection Rate : 0.5840          
+##    Detection Prevalence : 0.6555          
+##       Balanced Accuracy : 0.8626          
+##                                           
+##        &#39;Positive&#39; Class : TRUE            
+## </code></pre>
+<pre class="r"><code>auc(roc_reduced_rf)</code></pre>
+<pre><code>## Area under the curve: 0.9278</code></pre>
+<p>After removing <code>Compound</code>, the Random Forest model became
+slightly worse. Accuracy decreased from 0.8908 to 0.8782, sensitivity
+decreased from 0.9404 to 0.9205, and balanced accuracy decreased from
+0.8725 to 0.8626. Specificity stayed the same at 0.8046.</p>
+<p>The AUC also decreased from 0.9335 to 0.9278. This confirms that
+removing <code>Compound</code> did not improve the model.</p>
+<p>Even though <code>Compound</code> had the lowest importance score, it
+still seems to add some useful information when combined with the other
+predictors. Because of this, the full Random Forest feature set was
+kept.</p>
+</div>
+<div id="summary-4" class="section level3">
+<h3>Summary</h3>
+<p>For Random Forest, feature selection did not support removing any
+predictors. RFE selected the full set of 6 variables, and the reduced
+model without <code>Compound</code> performed slightly worse on the test
+set.</p>
+<p>This result is different from Logistic Regression, where removing
+<code>SpeedI1</code> improved the model. It shows that feature selection
+depends on the model. A variable that looks weak in one method can still
+be useful in another model, especially when it works together with other
+predictors.</p>
+</div>
+</div>
+<div id="third-scenario-summary" class="section level2">
+<h2>7.3 Third Scenario Summary</h2>
+<p>The feature selection results were different for Logistic Regression
+and Random Forest.</p>
+<p>For Logistic Regression, the stepwise method suggested removing
+<code>SpeedI1</code>. This reduced model was simpler and performed
+slightly better than the full Logistic Regression model. However,
+removing <code>Compound</code> based only on statistical significance
+did not improve the model. Even though <code>Compound</code> was not
+significant in the coefficient table, it still seemed to help the model
+when used together with the other predictors.</p>
+<p>For Random Forest, the result was different. Recursive Feature
+Elimination selected all 6 predictors, and the reduced model without
+<code>Compound</code> performed slightly worse. This means that Random
+Forest was still able to use information from <code>Compound</code>,
+even though it had the lowest importance value.</p>
+<p>Overall, Scenario 3 shows that feature selection is both
+method-dependent and model-dependent. A feature that can be removed from
+one model should not automatically be removed from another model. For
+this project, the best reduced Logistic Regression model excluded
+<code>SpeedI1</code>, while the best Random Forest model kept the full
+feature set.</p>
+</div>
 </div>
 
 

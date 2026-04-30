@@ -709,7 +709,7 @@ lg_probs <- predict(lg_model, newdata = test_sc1, type = "response")
 
 roc_lg <- roc(test_sc1$top10, lg_probs)
 
-lg_preds <- ifelse(lg_probs > 0.5, T, F)
+lg_preds <- ifelse(lg_probs > 0.6, T, F)
 
 # Metrics
 confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
@@ -728,7 +728,7 @@ lg_step_probs <- predict(lg_step_model, newdata = test_sc1, type="response")
 
 roc_step_lg <- roc(test_sc1$top10, lg_step_probs)
 
-lg_step_preds <- ifelse(lg_step_probs > 0.5, T, F)
+lg_step_preds <- ifelse(lg_step_probs > 0.6, T, F)
 
 confusionMatrix(factor(lg_step_preds), factor(test_sc1$top10), positive ="TRUE")
 AIC(lg_step_model)
@@ -756,7 +756,7 @@ lg_reduced_probs <- predict(lg_reduced_model, newdata = test_sc1, type="response
 
 roc_reduced_lg <- roc(test_sc1$top10, lg_reduced_probs)
 
-lg_reduced_preds <- ifelse(lg_reduced_probs > 0.5, T, F)
+lg_reduced_preds <- ifelse(lg_reduced_probs > 0.6, T, F)
 
 confusionMatrix(factor(lg_reduced_preds), factor(test_sc1$top10), positive ="TRUE")
 AIC(lg_reduced_model)
@@ -769,6 +769,7 @@ auc(roc_reduced_lg)
 rf_preds <- predict(rf_model, newdata = test_sc1)
 
 confusionMatrix(rf_preds, test_sc1$top10, positive = "TRUE")
+auc(roc_rf)
 
 # RFE 
 x_train <- train_sc1 %>% select(-top10)
@@ -810,13 +811,14 @@ rf_reduced_model <- randomForest(
   importance = TRUE
 )
 
-rf_reduced_probs <- predict(rf_model, newdata = test_sc1, type="prob")[, "TRUE"]
+rf_reduced_probs <- predict(rf_reduced_model, newdata = test_sc1, type="prob")[, "TRUE"]
+
+roc_reduced_rf <- roc(test_sc1$top10, rf_reduced_probs)
 
 rf_reduced_preds <- predict(rf_reduced_model, newdata = test_sc1)
 
 confusionMatrix(rf_reduced_preds, test_sc1$top10, positive = "TRUE")
-roc_reduced_rf <- roc(test_sc1$top10, rf_reduced_probs)
-
+auc(roc_reduced_rf)
 # After the removing of the Compound model become worse.
 
 # Save models for shiny app

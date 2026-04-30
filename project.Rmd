@@ -1413,3 +1413,259 @@ ggplot(roc_df, aes(x = false_positive_rate, y = sensitivity, color = model)) +
 The SVM and Random Forest curves stay closer to the top-left corner of the plot, which indicates stronger classification performance. The Logistic Regression curve is clearly lower, which is consistent with the weaker AUC value.
 
 Overall, the comparison shows a clear trade-off between interpretability and predictive performance. Logistic Regression is the easiest model to interpret, but it gives the weakest predictive results. Random Forest and SVM both improve performance substantially. Among them, SVM achieved the best overall performance, while Random Forest remained very close and offered somewhat better interpretability through feature importance.
+
+## 6.5 First Scenario Summary
+
+The comparison of the three classification models shows that model flexibility matters for this task. Logistic Regression provided a useful and interpretable baseline, but its performance was clearly lower than the nonlinear models.
+
+Random Forest and SVM both performed strongly, with high sensitivity, balanced accuracy, and AUC. SVM achieved the best overall results, but only by a small margin over Random Forest.
+
+This means that if the priority is predictive performance, SVM is the strongest choice in Scenario 1. If a better balance between performance and interpretability is preferred, Random Forest can also be considered a strong option.
+
+# 7. Feature Selection 
+
+In Scenario 3, feature selection is analysed for the same classification task. The goal is to check which predictors are useful for identifying Top 10 laps and whether a smaller feature set can keep similar model performance.
+
+This part is not only about removing variables. It is also used to compare how different feature selection methods behave. A feature may look unimportant in one model, but still be useful in another model. Because of this, feature selection is checked separately for Logistic Regression and Random Forest.
+
+The same train, validation, and test split from Scenario 1 is used here, so the results can be compared in a consistent way.
+
+## 7.1 Stepwise Logistic Regression
+
+The first feature selection step was done using Logistic Regression. Since Logistic Regression is an interpretable model, it is useful not only for prediction, but also for checking which predictors have a clear statistical contribution.
+
+Two approaches were used:
+
+1. stepwise selection based on AIC;
+2. reduction based on statistical significance of the coefficients.
+
+The purpose was to check whether the full feature set from Scenario 1 can be simplified without losing too much predictive performance.
+
+### Full Logistic Regression Model
+
+First, the full Logistic Regression model was evaluated using the original feature set from Scenario 1.
+
+```{r}
+
+lg_probs <- predict(lg_model, newdata = test_sc1, type = "response")
+
+roc_lg <- roc(test_sc1$top10, lg_probs)
+
+lg_preds <- ifelse(lg_probs > 0.6, T, F)
+
+# Metrics
+confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
+AIC(lg_model)
+auc(roc_lg)
+```
+
+### Stepwise Logistic Regression
+
+Stepwise Logistic Regression was used as an algorithmic feature selection method. The model started with the full Logistic Regression model from Scenario 1 and then tested whether adding or removing predictors improved the AIC.
+
+```{r}
+step_model <- step(
+  lg_model,
+  direction = "both",
+  trace=TRUE
+)
+```
+
+The stepwise procedure suggested removing `SpeedI1`. The full model had an AIC of 677.19, while the model without `SpeedI1` had a slightly lower AIC of 675.78. This means that removing `SpeedI1` made the model a little simpler and slightly better according to AIC.
+
+It is also interesting that `Compound` stayed in the model, even though its individual levels were not statistically significant in the Logistic Regression summary. This can happen because stepwise selection evaluates the model as a whole. A variable may not look significant on its own, but it can still slightly improve the model in combination with other predictors. However, this result should be interpreted only as a Logistic Regression-based selection. It does not mean that the same reduced feature set will also be best for Random Forest or SVM.
+
+Based on the stepwise result, a reduced Logistic Regression model was fitted without `SpeedI1`.
+
+```{r}
+lg_step_model <- glm(data=train_sc1,
+                family = binomial,
+                top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL + Compound
+)
+
+lg_step_probs <- predict(lg_step_model, newdata = test_sc1, type="response")
+
+roc_step_lg <- roc(test_sc1$top10, lg_step_probs)
+
+lg_step_preds <- ifelse(lg_step_probs > 0.6, T, F)
+
+confusionMatrix(factor(lg_step_preds), factor(test_sc1$top10), positive ="TRUE")
+AIC(lg_step_model)
+auc(roc_step_lg)
+```
+
+fter removing `SpeedI1`, the model became slightly better than the full Logistic Regression model. The AIC decreased from 677.19 to 675.79
+
+The test performance also improved. Accuracy increased from 0.7899 to 0.8109, sensitivity increased from 0.8477 to 0.8675, and specificity increased from 0.6897 to 0.7126. Balanced accuracy also improved from 0.7687 to 0.7901.
+
+This means that removing `SpeedI1` made the model simpler and also improved its test performance. For Logistic Regression, `SpeedI1` does not seem to add useful information once the other predictors are already included.
+
+### Reduction Based on Statistical Significance
+
+The Logistic Regression model was also checked using the statistical significance of the coefficients.
+
+```{r}
+# Reduce by the significance of the features
+# The full model, insignificant:
+# SpeedI1, CompoundSoft, CompoundMedium and Stint4
+summary(lg_model)
+
+# Results on the model without SpeedI1, insignificant:
+# Stint4, CompoundMedium, CompoundSoft
+# Remove the Compound on this step, because Stint and Compound are factors,
+# but Stint3 is significant, while both Compounds are insignificant
+summary(lg_step_model)
+```
+
+In the full model, `SpeedI1`, `CompoundMEDIUM`, `CompoundSOFT`, and `Stint4` were not statistically significant. After removing `SpeedI1`, the remaining insignificant terms were `Stint4`, `CompoundMEDIUM`, and `CompoundSOFT`.
+
+Since `Stint` and `Compound` are factor variables, they should not be judged only by one individual dummy coefficient. `Stint` was kept because one of its levels was significant, while both levels of `Compound` were insignificant. Because of this, a second reduced model was fitted without `Compound`.
+
+```{r}
+lg_reduced_model <- glm(data=train_sc1,
+                        family = binomial,
+                        top10 ~ SpeedI2 + TyreLife + Stint + SpeedFL
+)
+
+summary(lg_reduced_model)
+
+lg_reduced_probs <- predict(lg_reduced_model, newdata = test_sc1, type="response")
+
+roc_reduced_lg <- roc(test_sc1$top10, lg_reduced_probs)
+
+lg_reduced_preds <- ifelse(lg_reduced_probs > 0.6, T, F)
+
+confusionMatrix(factor(lg_reduced_preds), factor(test_sc1$top10), positive ="TRUE")
+AIC(lg_reduced_model)
+auc(roc_reduced_lg)
+```
+After removing `Compound`, the model became worse. Accuracy decreased to 0.7857, balanced accuracy decreased to 0.7605, and AUC decreased to 0.8739. The AIC also increased to 678.22.
+
+This means that, even though `Compound` was not statistically significant in the coefficient table, removing it did not improve the model. It may still help the model slightly when used together with the other predictors.
+
+Because of this, the stepwise model without `SpeedI1` was kept as the better reduced Logistic Regression model.
+
+### Summary
+
+For Logistic Regression, the best reduced model was the stepwise model without `SpeedI1`.
+
+This model was simpler than the full model and performed slightly better on the test set. It improved accuracy, sensitivity, specificity, balanced accuracy, AIC, and AUC. Because of this, `SpeedI1` can be removed from the Logistic Regression feature set.
+
+The further reduction based on statistical significance, where `Compound` was also removed, did not improve the model. Even though `Compound` was not significant in the coefficient table, removing it made AIC, AUC, and balanced accuracy worse.
+
+This shows that feature selection should not be based only on p-values. A feature can be statistically insignificant by itself, but still help the model when combined with other predictors.
+
+## 7.2 Random Forest Feature Selection
+
+### Full Random Forest
+Feature selection was also checked for the Random Forest model. This is important because Random Forest can use variables differently from Logistic Regression. A predictor that is not useful in a linear model may still help a tree-based model.
+
+First, the full Random Forest model from Scenario 1 was evaluated again.
+
+```{r}
+rf_preds <- predict(rf_model, newdata = test_sc1)
+
+confusionMatrix(rf_preds, test_sc1$top10, positive = "TRUE")
+auc(roc_rf)
+```
+
+The full Random Forest model performed well on the test set. It reached an accuracy of 0.8908, sensitivity of 0.9404, specificity of 0.8046, balanced accuracy of 0.8725, and AUC of 0.9335.
+
+### RFE Random Forest
+
+Next, Recursive Feature Elimination was used. This method tests different subset sizes and checks which number of predictors gives the best cross-validated performance.
+
+```{r}
+# RFE 
+x_train <- train_sc1 %>% select(-top10)
+y_train <- train_sc1$top10
+
+ctrl <- rfeControl(
+  functions = rfFuncs,
+  method = "cv",
+  number = 5
+)
+
+set.seed(29)
+rfe_model <- rfe(
+  x = x_train,
+  y = y_train,
+  sizes = c(2,3,4,5,6),
+  ntree = 100,
+  mtry = 5,
+  nodesize = 3,
+  rfeControl = ctrl
+)
+
+rfe_model
+# RFE keep all predictors
+predictors(rfe_model)
+```
+
+The RFE result selected all 6 predictors:
+
+- `SpeedI2`
+- `SpeedFL`
+- `Stint`
+- `SpeedI1`
+- `TyreLife`
+- `Compound`
+
+The cross-validation results also showed that performance improved as more variables were included. The best accuracy was reached with all 6 predictors, so RFE did not suggest reducing the Random Forest feature set.
+
+### Reduction Based on Statistical Importance 
+
+The Random Forest importance table was then checked to see whether any predictor had very low importance.
+
+```{r}
+# Remove the least significant predictor
+# least improtant predictor is Compound, let's remove it as model shows
+# and see the resutl
+rf_model$importance
+```
+
+According to the importance values, `Compound` was the least important predictor. Because of this, an additional reduced Random Forest model was fitted without `Compound`.
+
+```{r}
+rf_reduced_model <- randomForest(
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL,
+  data = train_sc1,
+  ntree = 100,
+  mtry = 5,
+  nodesize = 3,
+  replace = TRUE,
+  importance = TRUE
+)
+
+rf_reduced_probs <- predict(rf_reduced_model, newdata = test_sc1, type="prob")[, "TRUE"]
+
+roc_reduced_rf <- roc(test_sc1$top10, rf_reduced_probs)
+
+rf_reduced_preds <- predict(rf_reduced_model, newdata = test_sc1)
+
+confusionMatrix(rf_reduced_preds, test_sc1$top10, positive = "TRUE")
+auc(roc_reduced_rf)
+```
+
+After removing `Compound`, the Random Forest model became slightly worse. Accuracy decreased from 0.8908 to 0.8782, sensitivity decreased from 0.9404 to 0.9205, and balanced accuracy decreased from 0.8725 to 0.8626. Specificity stayed the same at 0.8046.
+
+The AUC also decreased from 0.9335 to 0.9278. This confirms that removing `Compound` did not improve the model.
+
+Even though `Compound` had the lowest importance score, it still seems to add some useful information when combined with the other predictors. Because of this, the full Random Forest feature set was kept.
+
+### Summary
+
+For Random Forest, feature selection did not support removing any predictors. RFE selected the full set of 6 variables, and the reduced model without `Compound` performed slightly worse on the test set.
+
+This result is different from Logistic Regression, where removing `SpeedI1` improved the model. It shows that feature selection depends on the model. A variable that looks weak in one method can still be useful in another model, especially when it works together with other predictors.
+
+## 7.3 Third Scenario Summary
+
+The feature selection results were different for Logistic Regression and Random Forest.
+
+For Logistic Regression, the stepwise method suggested removing `SpeedI1`. This reduced model was simpler and performed slightly better than the full Logistic Regression model. However, removing `Compound` based only on statistical significance did not improve the model. Even though `Compound` was not significant in the coefficient table, it still seemed to help the model when used together with the other predictors.
+
+For Random Forest, the result was different. Recursive Feature Elimination selected all 6 predictors, and the reduced model without `Compound` performed slightly worse. This means that Random Forest was still able to use information from `Compound`, even though it had the lowest importance value.
+
+Overall, Scenario 3 shows that feature selection is both method-dependent and model-dependent. A feature that can be removed from one model should not automatically be removed from another model. For this project, the best reduced Logistic Regression model excluded `SpeedI1`, while the best Random Forest model kept the full feature set.
+
