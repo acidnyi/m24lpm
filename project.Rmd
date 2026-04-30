@@ -62,7 +62,7 @@ The lap dataset contains information about each completed lap, including the dri
 
 # 3. Data Tidying
 
-# 3.1 Weather data
+## 3.1 Weather data
 
 Let's take a look on the weather data:
 
@@ -139,7 +139,7 @@ This all for tidying the weather data, result looks like this:
 glimpse(weather)
 ```
 
-# 3.2 Laps data
+## 3.2 Laps data
 
 ---
 #FastF1 generated переменная, указывает на данные о круге которые по различным причинам пришлось генерировать. Всего таких 4 круга из 1237 (0.3%). Поскольку згенерированных кругов не так много
@@ -345,7 +345,7 @@ The tidied version of the `laps` dataset looks as follows:
 summary(laps)
 ```
 
-# 3.3 Merging Weather with Laps
+## 3.3 Merging Weather with Laps
 
 After preprocessing the lap and weather datasets, the next step was to combine them into one modelling dataset. The weather observations were recorded at specific time points, while each lap has its own start time. Therefore, the weather data had to be matched to each lap using time information.
 
@@ -406,7 +406,7 @@ data$weather_time <- NULL
 
 # 4. Exploratory Data Analysis
 
-# 4.1 Target Variable Distribution
+## 4.1 Target Variable Distribution
 
 The target variable shows a moderate class imbalance. In the cleaned dataset, 63.48% of laps belong to the Top 10 class, while 36.52% of laps are outside the Top 10.
 
@@ -416,13 +416,13 @@ This imbalance is not extreme, but it should still be considered during model ev
 summary(data)
 ```
 
-# 4.2 Independence
+## 4.2 Independence
 
 The observations are not fully independent, because the dataset contains repeated laps for the same drivers. This means that several observations may share driver-specific or team-specific characteristics.
 
 This limitation should be considered when interpreting the results.
 
-# 4.3 Colinearity
+## 4.3 Colinearity
 
 To check collinearity between numerical predictors, a correlation matrix was calculated using only numeric variables and complete observations.
 
@@ -444,7 +444,7 @@ data$LapNumber <- NULL
 data$Pressure <- NULL
 ```
 
-# 4.4 Normality Check
+## 4.4 Normality Check
 
 Normality was checked as an exploratory step to better understand the distribution of the numerical variables. For most models used in this project, normality is not a strict requirement. It would be more important if a model such as LDA was used. Therefore, at this stage, only a quick normality check was performed, mainly for the speed-related variables.
 
@@ -512,7 +512,7 @@ The histograms and Q-Q plots show that the speed variables do not closely follow
 
 Since the selected modelling methods do not strictly require normally distributed predictors, no transformation was applied at this stage. A deeper normality analysis would be needed only if a model with stronger distributional assumptions, such as LDA, was included.
 
-# 4.5 Feature Scaling
+## 4.5 Feature Scaling
 
 The numerical features are measured on different scales. For example, speed variables, temperature variables, humidity, and tyre life have different units and ranges.
 
@@ -524,7 +524,7 @@ Therefore, scaling was not treated as a general cleaning step for the whole data
 summary(data)
 ```
 
-# 4.6 Outliers
+## 4.6 Outliers
 
 As part of the exploratory data analysis, potential outliers were examined in the numerical variables. A simple IQR-based function was created to count the number of observations outside the standard outlier range, defined as values below \(Q1 - 1.5 \times IQR\) or above \(Q3 + 1.5 \times IQR\).
 
@@ -584,7 +584,7 @@ No clear connection was found between these outliers and a specific condition su
 
 For this reason, the outliers were retained in the dataset at this stage. However, they may still contain meaningful information.
 
-# 4.7 Homoscedasticity
+## 4.7 Homoscedasticity
 
 Homoscedasticity was considered as an additional exploratory check. This assumption is not required for most of the models used in this project, especially for tree-based models and SVM.
 
@@ -592,7 +592,7 @@ However, homoscedasticity would be more relevant if models such as LDA or QDA we
 
 For this reason, a detailed homoscedasticity analysis was not performed at this stage. If LDA or QDA were selected later as part of the modelling strategy, this assumption would need to be checked more carefully.
 
-# 4.8 Linearity Check
+## 4.8 Linearity Check
 
 A linearity check was performed to understand whether the relationship between the numerical predictors and the target variable appears approximately linear. This check is mainly relevant for simpler linear models, such as Logistic Regression. It is not a strict requirement for Random Forest or SVM, but it helps to understand whether nonlinear models may be useful.
 
@@ -704,7 +704,7 @@ he categorical plots showed that some variables, especially `Driver`, `Team`, an
 
 Overall, the linearity check suggested that the relationship between predictors and the target variable is not purely linear. This supports the decision to compare Logistic Regression with more flexible nonlinear models.
 
-# 4.9 Results
+## 4.9 Results
 
 The exploratory data analysis helped identify the main characteristics and potential issues in the modelling dataset.First, the target variable showed a moderate class imbalance. The Top 10 class represented 63.48% of the observations, while 36.52% of laps were outside the Top 10. This imbalance is not extreme, but it should be considered during model evaluation, so accuracy alone is not sufficient.
 
@@ -725,4 +725,101 @@ The linearity check suggested that the relationship between predictors and the t
 
 # 5 Modeling Strategy
 
+## 5.1 Classification setup
 
+---
+#Решаема задача являеться бинарной классификацией по определению являеться ли круг в top10 основываясь на выбраных race-related features. Прирорететом являеться найти как можно больше кругов
+#которые были в top10 (top10 = TRUE), поэтому sensitivity являеться приоретеной метрикой. Модели будут сравниваться не только по sensitivity, balanced accuracy и тд, но и по их interpretability.
+---
+
+The task solved in this project is a binary classification problem. The goal is to determine whether a lap belongs to the Top 10 class based on the selected race-related features.
+
+The target variable is `top10`, where `TRUE` means that the lap was completed by a driver in the Top 10, and `FALSE` means that the lap was completed by a driver outside the Top 10.
+
+The priority of the modelling process is to correctly identify as many Top 10 laps as possible. Therefore, sensitivity is treated as one of the most important evaluation metrics. At the same time, the models are not compared only by sensitivity, balanced accuracy, and other performance metrics, but also by their interpretability.
+
+## 5.2 Feature set
+
+For Scenario 1, the same feature set was used for all models. This makes the model comparison more consistent, because differences in performance can be interpreted mainly as differences between modelling approaches, not as a result of using different input variables.
+
+The selected feature set includes:
+
+- `SpeedI2`
+- `TyreLife`
+- `Stint`
+- `SpeedI1`
+- `SpeedFL`
+- `Compound`
+
+These variables were selected based on the EDA results and their potential relationship with the `top10` target variable.
+
+The `SpeedST` variable was not included in this feature set. It had a relatively high number of outliers and showed less stable behaviour during the exploratory checks. Removing it helped keep the initial feature set simpler and more stable for the first model comparison.
+
+Feature selection itself is analysed separately in Scenario 3. Therefore, Scenario 1 uses one fixed feature set to focus on comparing the modelling methods.
+
+## 5.3 Data Splitting
+
+After selecting the feature set for Scenario 1, a separate dataset was created for modelling. It contains only the selected predictors and the target variable `top10`.
+
+```{r}
+data_sc1 <- data %>% select(SpeedI1, SpeedI2, SpeedFL, TyreLife, Stint, Compound, top10)
+```
+
+The data was then split into training, validation, and test sets. A fixed random seed was used to make the split reproducible.
+
+```{r}
+library(rsample)
+
+set.seed(13)
+
+data_sc1$top10 <- as.factor(data_sc1$top10)
+
+split <- initial_split(data_sc1, prop = 0.8, strata = top10)
+
+train_val_sc1 <- training(split)
+test_sc1 <- testing(split)
+```
+
+First, 80% of the data was assigned to the training-validation part, while 20% was kept as the final test set. The split was stratified by `top10`, so the class proportions were preserved as much as possible in both parts.
+
+The training-validation data was then split again into training and validation sets.
+
+```{r}
+set.seed(13)
+
+val_split <- initial_split(train_val_sc1, prop = 0.75, strata = top10)
+train_sc1 <- training(val_split)
+val_sc1 <- testing(val_split)
+```
+
+This produces approximately 60% training data, 20% validation data, and 20% test data. The validation set is used for model comparison and tuning decisions, while the test set is kept separate for final evaluation.
+
+Finally, the class distributions in the training, validation, and test sets were checked to make sure that the stratified split preserved the proportion of `top10` observations.
+
+```{r}
+summary(train_sc1)
+summary(val_sc1)
+summary(test_sc1)
+```
+
+## 5.4 Model Evaluation Metrics
+
+The models are evaluated using the metrics: accuracy, sensitivity, specificity, balanced accuracy, ROC curves, and AUC.
+
+Since the main priority is to correctly identify laps belonging to the Top 10 class, sensitivity is treated as one of the key metrics. However, sensitivity is not interpreted alone, because a model should also keep reasonable performance on the non-Top 10 class. For this reason, specificity and balanced accuracy are also considered.
+
+ROC curves and AUC are used to compare the models across different classification thresholds. This provides a broader view of model performance than a single threshold-based metric.
+
+## 5.5 Selected models
+
+For Scenario 1, three classification models were selected: Logistic Regression, Random Forest, and Support Vector Machine.
+
+Logistic Regression was chosen as a baseline model. It is relatively simple, interpretable, and allows us to understand the direction of the relationship between predictors and the probability of belonging to the Top 10 class. This makes it useful as a reference point for comparing more complex models.
+
+Random Forest was selected as a tree-based nonlinear model. It can capture more complex relationships between predictors and the target variable and does not require strong assumptions about normality or linearity. It also provides feature importance, which is useful for interpretation.
+
+Support Vector Machine was chosen as a flexible classification model that can handle nonlinear decision boundaries, especially when using the radial basis function kernel. Since the EDA suggested that the relationship between predictors and the target variable is not purely linear, SVM provides a useful comparison against both Logistic Regression and Random Forest.
+
+The dataset limitations identified during EDA are not described only in one place. Instead, they are discussed in the relevant model sections, where they directly affect model interpretation or preprocessing decisions. These limitations include class imbalance, repeated laps for the same drivers, nonlinear relationships, outliers, and different feature scales.
+
+# 6. Models
