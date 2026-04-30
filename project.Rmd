@@ -823,3 +823,593 @@ Support Vector Machine was chosen as a flexible classification model that can ha
 The dataset limitations identified during EDA are not described only in one place. Instead, they are discussed in the relevant model sections, where they directly affect model interpretation or preprocessing decisions. These limitations include class imbalance, repeated laps for the same drivers, nonlinear relationships, outliers, and different feature scales.
 
 # 6. Models
+
+## 6.1 Logistic Regression
+
+Logistic Regression was used as the baseline classification model. This model is suitable for binary classification problems and provides interpretable coefficients, which makes it useful for understanding how the selected predictors are related to the probability of a lap belonging to the Top 10 class.
+
+### Logistic Regression Requirements
+
+Before interpreting the model, the main requirements and limitations were considered.
+
+- Binary response variable 
+  The response variable `top10` is binary, with two possible classes: `TRUE` and `FALSE`. Therefore, Logistic Regression is appropriate for this classification task.
+
+- Sample size
+  The training dataset contains 708 lap-level observations. The model uses 6 main predictors, with additional dummy variables created for categorical predictors such as `Stint` and `Compound`. This sample size is sufficient for fitting a basic Logistic Regression model.
+
+- No severe multicollinearity
+  Collinearity was checked during the EDA stage. Strongly correlated variables such as `LapNumber` and `Pressure` were removed before modelling. Therefore, no severe collinearity issue was expected in the final feature set.
+
+- Independence of observations
+  The observations are not fully independent, because the dataset contains repeated laps for the same drivers. This is a limitation of the dataset. However, since the goal is predictive classification and model comparison rather than causal inference, Logistic Regression can still be used as a baseline model.
+
+- Linearity between predictors and log-odds 
+  Logistic Regression assumes an approximately linear relationship between numerical predictors and the log-odds of the response variable. The EDA showed that some predictors have nonlinear relationships with the target. This means that Logistic Regression may be limited in capturing more complex patterns, which justifies comparing it with nonlinear models such as Random Forest and SVM.
+
+- Outliers
+  Some speed-related variables contained outliers. These observations were kept in the dataset because no clear data-quality reason was found for removing them. However, Logistic Regression can be affected by influential observations, so this should be considered when interpreting the model.
+
+- Feature scaling 
+  Feature scaling is not strictly required for Logistic Regression in the same way as for SVM. Therefore, the model was fitted using the original scale of the selected predictors.
+
+### Model
+
+The model was fitted using the Scenario 1 feature set:
+
+- `SpeedI2`
+- `TyreLife`
+- `Stint`
+- `SpeedI1`
+- `SpeedFL`
+- `Compound`
+
+```{r}
+lg_model <- glm(data=train_sc1,
+  family = binomial,
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound
+)
+
+summary(lg_model)
+```
+
+The Logistic Regression model shows that several predictors are statistically significant.
+
+`SpeedI2` has a positive coefficient and is statistically significant. This suggests that higher speed at this measurement point is associated with a higher probability of the lap belonging to the Top 10 class.
+
+`TyreLife` has a negative and statistically significant coefficient. This means that, as tyre life increases, the probability of being in the Top 10 class decreases, assuming the other variables remain constant. This is reasonable, because older tyres usually provide lower performance.
+
+`Stint3` is also statistically significant and has a negative coefficient. This suggests that laps in this stint are associated with a lower probability of being in the Top 10 compared with the reference stint.
+
+`SpeedFL` has a negative and statistically significant coefficient. This result should be interpreted carefully, because speed variables can be correlated with race context and may not have a simple direct relationship with the target variable.
+
+`SpeedI1`, `CompoundMEDIUM`, and some sparse categories such as `Stint4` and `CompoundSOFT` are not statistically significant in this model. The very large standard errors for `Stint4` and `CompoundSOFT` suggest that these categories may have very few observations or separation issues. Therefore, their coefficients should not be interpreted as reliable effects.
+
+
+### Threshold Tuning
+
+By default, Logistic Regression uses a probability threshold of 0.5 for classification. However, it may not always be optimal so, different thresholds were tested on the validation set.
+
+```{r}
+# Threshold tuning
+thresholds <- seq(0.05, 0.95, by=0.05)
+
+lg_val_probs <- predict(lg_model, newdata = val_sc1, type="response")
+
+results <- lapply(thresholds, function(t) {
+  
+  pred <- ifelse(lg_val_probs >= t, TRUE, FALSE)
+  actual <- val_sc1$top10
+  
+  TP <- sum(pred == TRUE & actual == TRUE)
+  TN <- sum(pred == FALSE & actual == FALSE)
+  FP <- sum(pred == TRUE & actual == FALSE)
+  FN <- sum(pred == FALSE & actual == TRUE)
+  
+  sensitivity <- TP / (TP + FN)
+  specificity <- TN / (TN + FP)
+  
+  data.frame(
+    threshold = t,
+    sensitivity = sensitivity,
+    specificity = specificity,
+    balanced_accuracy = (sensitivity + specificity) / 2
+  )
+})
+
+results <- bind_rows(results)
+
+results %>% arrange(desc(balanced_accuracy))
+```
+
+
+The validation results were used to compare sensitivity, specificity, and balanced accuracy across different thresholds. A higher threshold can improve specificity and balanced accuracy, but it may also reduce sensitivity. The 0.6 threshold showed the best result in the balanced_accuracy, keeping the sensitivity at 82.67% and specificity at 67.81% on the validation data.
+
+### Testing
+
+The model's result on the testing set:
+
+```{r}
+# Testing
+
+lg_probs <- predict(lg_model, newdata = test_sc1, type = "response")
+
+# use the threshold based on the threshold tuning
+lg_preds <- ifelse(lg_probs > 0.6, T, F)
+
+library(caret)
+
+confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
+
+```
+
+On the test set, the Logistic Regression model reached an accuracy of 0.7899. Since the dataset is not perfectly balanced, accuracy alone is not enough to judge the model, so sensitivity, specificity, and balanced accuracy are also considered.
+
+The model correctly found 128 Top 10 laps and missed 23 of them. This gives a sensitivity of 0.8477, meaning that around 85% of actual Top 10 laps were identified correctly. This is a good result for our goal, because finding Top 10 laps is the main priority.
+
+The specificity is lower, at 0.6897. This means that the model is less accurate when identifying laps outside the Top 10. In practice, some non-Top 10 laps are classified as Top 10. This is the trade-off we accept when sensitivity is more important.
+
+The balanced accuracy is 0.7687, which shows that the model performs reasonably well across both classes, not only on the majority class.
+
+Logistic Regression worked well as a baseline model. It achieved reasonable test performance and, most importantly for this project, showed good sensitivity. This means that the model was able to identify most of the actual Top 10 laps.
+
+### Summary
+
+The main advantage of Logistic Regression is interpretability. The coefficients make it possible to see the direction of the relationship between each predictor and the probability of belonging to the Top 10 class. For example, `SpeedI2` had a positive and significant coefficient, while `TyreLife` had a negative and significant coefficient.However, the model also has some limitations. 
+
+The EDA showed that not all relationships between predictors and the target are linear, and Logistic Regression may not capture these nonlinear patterns well. Some categorical levels, such as `Stint4` and `CompoundSOFT`, also had very large standard errors, which suggests that these categories had too few observations or unstable estimates.Overall, Logistic Regression is useful as a simple and interpretable reference model. It gives a clear baseline for comparison, but more flexible models may perform better if the relationship between race features and Top 10 classification is nonlinear.
+
+## 6.2 Random Forest
+
+Random Forest was used as a nonlinear model. Unlike Logistic Regression, it does not assume a linear relationship between predictors and the target variable, which is useful here because the EDA showed that some predictors have nonlinear patterns.
+
+The same feature set as in Logistic Regression was used:
+
+- `SpeedI1`
+- `SpeedI2`
+- `SpeedFL`
+- `TyreLife`
+- `Stint`
+- `Compound`
+
+This keeps the comparison fair, because the models are fitted on the same input variables.
+
+### Random Forest Requirements and Limitations
+
+- Binary response variable 
+  The response variable `top10` is binary, so Random Forest can be used for this classification task.
+
+- Independence of observations 
+  The observations are not fully independent, because the dataset contains repeated laps from the same drivers. This is a limitation of the dataset, but it affects the interpretation more than the technical ability to fit the model.
+
+- Linearity is not required 
+  Random Forest can model nonlinear relationships between predictors and the target. This is one of the reasons why it was selected after the EDA.
+
+- Normality is not required 
+  Random Forest does not require normally distributed predictors, so the non-normality observed in the speed variables is not a major problem for this model.
+
+- Feature scaling is not required 
+  Tree-based models split variables by thresholds, so they are not sensitive to feature scales.
+
+- Outliers 
+  Random Forest is usually more robust to outliers than Logistic Regression, but outliers can still influence some split decisions. Since no clear data-quality reason was found for removing the outliers, they were kept in the dataset.
+
+- Sample size
+  The training set contains 708 lap-level observations. For this dataset size and the selected feature set, this is enough to fit a Random Forest model.
+
+### Parameter Tuning
+
+For Random Forest, three parameters were tuned:
+
+- `ntree`: the number of trees in the forest;
+- `mtry`: the number of variables randomly considered at each split;
+- `nodesize`: the minimum size of terminal nodes.
+
+The `maxnodes` parameter was not tuned. Since the dataset is not very large and the number of predictors is limited, `nodesize` was used as the main control for tree complexity.
+
+```{r}
+library(randomForest)
+set.seed(13)
+
+# Parameter tuning
+# for the random forest in our case will be enough to tune only the 
+# ntree, mtry, nodesize
+# maxnodes are additional control of the tree depth, but our dataset is not
+# that big and there are not many parametrs, so nodesize must be enough
+
+rf_grid <- expand.grid(
+  ntree = seq(100, 500, 100),
+  mtry = seq(2, 5, 1),
+  nodesize = seq(3, 10, 1)
+)
+```
+
+The models were trained on the training set and evaluated on the validation set. Balanced accuracy was used for selecting the final parameter combination, because it considers both sensitivity and specificity.
+
+```{r}
+rf_results <- lapply(1:nrow(rf_grid), function(i) {
+  # to ensure reproducebility, alongside randomness during model building
+  set.seed(13 + i)
+  
+  model <- randomForest(
+    top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
+    data = train_sc1,
+    ntree = rf_grid$ntree[i],
+    mtry = rf_grid$mtry[i],
+    nodesize = rf_grid$nodesize[i],
+    replace = TRUE,
+    importance = TRUE
+  )
+  
+  pred <- predict(model, newdata = val_sc1)
+  actual <- val_sc1$top10
+  
+  TP <- sum(pred == TRUE & actual == TRUE)
+  TN <- sum(pred == FALSE & actual == FALSE)
+  FP <- sum(pred == TRUE & actual == FALSE)
+  FN <- sum(pred == FALSE & actual == TRUE)
+  
+  sensitivity <- TP / (TP + FN)
+  specificity <- TN / (TN + FP)
+  
+  data.frame(
+    ntree = rf_grid$ntree[i],
+    mtry = rf_grid$mtry[i],
+    nodesize = rf_grid$nodesize[i],
+    sensitivity = sensitivity,
+    specificity = specificity,
+    balanced_accuracy = (sensitivity + specificity) / 2
+  )
+})
+
+rf_results <- bind_rows(rf_results)
+
+rf_results %>%
+  arrange(desc(balanced_accuracy)) %>%
+  head(n=30)
+
+# find the number of the row with the best accuracy to get the number of the seed
+# in our situation its 16
+rf_results %>%
+  head(n=30)
+```
+
+The best validation result was achieved with:
+
+- `ntree = 100`
+- `mtry = 5`
+- `nodesize = 3`
+
+This model reached a validation sensitivity of 0.8933, specificity of 0.8161, and balanced accuracy of 0.8547. These values show a good balance between finding Top 10 laps and correctly identifying laps outside the Top 10.
+
+### Training
+
+The final Random Forest model was fitted using the best parameter combination from the validation results.
+
+```{r}
+set.seed(13 + 16)
+
+rf_model <- randomForest(
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
+  data = train_sc1,
+  ntree = 100,
+  mtry = 5,
+  nodesize = 3,
+  replace = TRUE,
+  importance = TRUE
+)
+```
+
+### Feature Importance
+
+Random Forest also provides feature importance values, which help to understand which predictors contributed more to the model.
+
+```{r}
+rf_model$importance
+```
+
+The most important variables were `SpeedI2` and `SpeedFL`. Both of them had high importance values, which suggests that speed-related information is strongly connected with the Top 10 classification.
+
+`TyreLife`, `SpeedI1`, and `Stint` also contributed to the model, although less strongly than `SpeedI2` and `SpeedFL`. This makes sense, because tyre age and stint can reflect race strategy and tyre performance during the race.
+
+`Compound` had the lowest importance among the selected predictors. This does not necessarily mean that tyre compound has no effect at all, but in this dataset and with this model it added less information than the speed and tyre-life variables.
+
+### Testing
+
+```{r}
+rf_preds <- predict(rf_model, newdata = test_sc1)
+
+confusionMatrix(rf_preds, test_sc1$top10, positive = "TRUE")
+```
+
+On the test set, Random Forest performed clearly better than the Logistic Regression baseline. The model reached an accuracy of 0.8908 and a balanced accuracy of 0.8725.
+
+The model correctly identified 142 Top 10 laps and missed only 9 of them. This gives a sensitivity of 0.9404, which is very strong for the main goal of the project.
+
+The specificity was 0.8046, meaning that the model also performed well on laps outside the Top 10. There were 17 non-Top 10 laps incorrectly classified as Top 10, but this is still a clear improvement compared with the Logistic Regression model.
+
+Overall, Random Forest gives a better balance between sensitivity and specificity. It keeps high sensitivity, which is important for detecting Top 10 laps, while also improving the classification of non-Top 10 laps.
+
+### Summary
+
+Random Forest performed well on this classification task. It handled the nonlinear relationships better than Logistic Regression and achieved stronger test performance. The model is less directly interpretable than Logistic Regression, but the feature importance results still provide useful information about which variables were most relevant.
+
+The main limitation is that Random Forest does not explain the direction of the relationship as clearly as Logistic Regression. For example, it can show that `SpeedI2` is important, but it does not directly explain whether increasing `SpeedI2` always increases the probability of being in the Top 10. Therefore, the model is useful for prediction and feature ranking, but less transparent for coefficient-level interpretation.
+
+# 6.3 Support Vector Machine
+
+Support Vector Machine was used as another nonlinear classification model. Since the EDA showed that some predictors do not have a clearly linear relationship with the target variable, an SVM with a radial kernel was selected. The radial kernel allows the model to create a nonlinear decision boundary, which can be useful for this classification task.
+
+The same feature set was used as in the previous models:
+
+- `SpeedI1`
+- `SpeedI2`
+- `SpeedFL`
+- `TyreLife`
+- `Stint`
+- `Compound`
+
+This keeps the comparison consistent across Logistic Regression, Random Forest, and SVM.
+
+### SVM Requirements and Limitations
+
+- *Binary response variable
+  The response variable `top10` is binary, so SVM can be used for this classification task.
+
+- Independence of observations 
+  The observations are not fully independent, because the dataset contains repeated laps from the same drivers. This is a limitation of the dataset and should be considered when interpreting the results.
+
+- Linearity is not required with radial kernel 
+  Since the radial kernel was used, the model does not require a linear relationship between predictors and the target. This is useful because the EDA showed nonlinear patterns in some variables.
+
+- No severe collinearity
+  Severe collinearity was already reduced during the EDA stage by removing strongly redundant variables. Therefore, no major collinearity issue was expected in the final feature set.
+
+- Outliers 
+  SVM can be sensitive to outliers, especially because the model tries to define a separating boundary between classes. The outliers were kept in the dataset because there was no clear data-quality reason to remove them, but this remains a limitation.
+
+- Feature scaling 
+  Feature scaling is important for SVM, because the model is based on distances and margins. If variables are measured on very different scales, variables with larger numeric ranges may dominate the model.
+
+- Sample size
+  The training set contains 708 lap-level observations. For the selected feature
+  
+### Feature Scaling
+
+Before fitting the SVM model, the numerical predictors were scaled. This step was needed because SVM is sensitive to the scale of the input variables.
+
+Only the numerical variables were scaled:
+
+- `SpeedI2`
+- `SpeedI1`
+- `SpeedFL`
+- `TyreLife`
+
+The categorical variables `Stint` and `Compound` were kept as factors. 
+
+```{r message=F, warning=F}
+num_features <- c("SpeedI2", "SpeedI1", "SpeedFL", "TyreLife")
+
+train_means <- train_sc1 %>%
+  summarise(
+    across(
+      where(is.numeric),
+      mean,
+      na.rm = T
+    )
+  )
+
+train_sds <- train_sc1 %>%
+  summarise(
+    across(
+      where(is.numeric),
+      sd,
+      na.rm = T
+    )
+  )
+
+scale <- function(data, means, sds, features) {
+  scaled <- data
+  
+  for (f in features) {
+    scaled[[f]] <- (data[[f]] - means[[f]]) / sds[[f]]
+  }
+  
+  scaled
+}
+
+# scale all sets based on the train set, to prevent leakage
+train_svm <- scale(train_sc1, train_means, train_sds, num_features)
+val_svm <- scale(val_sc1, train_means, train_sds, num_features)
+test_svm <- scale(test_sc1, train_means, train_sds, num_features)
+```
+
+The scaling parameters were calculated only from the training set. This is important because using validation or test data to calculate means and standard deviations would create data leakage. The same training-set scaling parameters were then applied to the validation and test sets. This keeps the workflow realistic and prevents information from the validation or test data from entering the training process.
+
+### Parameter Tuning
+
+For the SVM model, three main parameters were tuned:
+
+- `cost`: controls how strongly the model penalizes misclassification;
+- `gamma`: controls the flexibility of the radial decision boundary.
+- `kernel`: controls how the data is transformed
+
+A grid of possible values was tested on the validation set.
+
+```{r}
+library(e1071)
+set.seed(13)
+
+svm_grid <- expand.grid(
+  cost = seq(0.5, 10, 0.5),
+  gamma = seq(0.005, 1, 0.05),
+  kernel = c("radial", "linear", "polynomial", "sigmoid")
+)
+
+svm_grid %>% head(n = 30)
+
+svm_results <- lapply(1:nrow(svm_grid), function(i) {
+
+   model <- svm(
+    top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
+    data = train_svm,
+    kernel = svm_grid$kernel[i],
+    cost = svm_grid$cost[i],
+    gamma = svm_grid$gamma[i],
+  )
+  
+  pred <- predict(model, newdata = val_svm)
+  actual <- val_svm$top10
+  
+  TP <- sum(pred == TRUE & actual == TRUE)
+  TN <- sum(pred == FALSE & actual == FALSE)
+  FP <- sum(pred == TRUE & actual == FALSE)
+  FN <- sum(pred == FALSE & actual == TRUE)
+  
+  sensitivity <- TP / (TP + FN)
+  specificity <- TN / (TN + FP)
+  
+  data.frame(
+    cost = svm_grid$cost[i],
+    gamma = svm_grid$gamma[i],
+    kernel = svm_grid$kernel[i],
+    sensitivity = sensitivity,
+    specificity = specificity,
+    balanced_accuracy = (sensitivity + specificity) / 2
+  )
+})
+
+svm_results <- bind_rows(svm_results)
+
+svm_results %>%
+  arrange(desc(balanced_accuracy)) %>%
+  head(n = 30)
+```
+
+Each parameter combination was fitted on the training set and evaluated on the validation set. Balanced accuracy was used to choose the best combination, because it considers both sensitivity and specificity.
+
+The best validation result was obtained with `kernel = radial` cost = 9` and `gamma = 0.955`. This combination reached a validation sensitivity of 0.8933, specificity of 0.7931, and balanced accuracy of 0.8432.
+
+This result shows that the SVM model performs well on the validation set, although it did not improve over the best Random Forest validation result.
+
+### Testing
+
+The final SVM model was fitted using the best parameter combination from the validation results.
+
+```{r}
+svm_model <- svm(
+  top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
+  data = train_svm,
+  kernel = "radial",
+  cost = 9,
+  gamma = 0.955,
+  probability = TRUE
+)
+
+# No check of the Feature Importance due to the radial kernel chosen
+# these option doesn't provide a clear data about the significance of the features
+
+svm_preds <- predict(svm_model, newdata = test_svm)
+
+confusionMatrix(svm_preds, test_svm$top10, positive = "TRUE")
+```
+
+Because a radial kernel was used, the model does not provide coefficients that can be interpreted in the same direct way as Logistic Regression. Therefore, no feature importance interpretation was used for this model.
+
+On the test set, the SVM model reached an accuracy of 0.8950 and a balanced accuracy of 0.8807. This is a strong result and shows that the model performs well on both classes.
+
+The model correctly identified 141 Top 10 laps and missed only 10 of them. This gives a sensitivity of 0.9338, which fits well with the main goal of the project: finding as many Top 10 laps as possible.
+
+The specificity was 0.8276, meaning that the model also classified non-Top 10 laps quite well. There were 15 non-Top 10 laps incorrectly predicted as Top 10.
+
+Overall, the SVM model gives a good balance between sensitivity and specificity. It performs slightly better than Random Forest in terms of balanced accuracy on the test set, while keeping very high sensitivity.
+
+### Summary
+
+SVM with a radial kernel worked well for this classification task. It reached high sensitivity, which is important because the main goal is to identify Top 10 laps. At the same time, it also kept good specificity, so the model was not only predicting the majority class.
+
+The main advantage of this model is that it can handle nonlinear relationships between predictors and the target. This is useful here, because the EDA showed that not all predictors have a simple linear relationship with `top10`.
+
+The main limitation is interpretability. Unlike Logistic Regression, the radial SVM does not provide simple coefficients, and unlike Random Forest, it does not give a straightforward feature importance table. Therefore, SVM is useful mainly as a strong predictive model, but it is harder to explain in terms of individual feature effects.
+
+Overall, SVM provided the strongest test performance among the three models, but this comes with lower interpretability.
+
+# 6.4 Model Comparison
+
+After fitting all three models, their overall classification performance was compared using ROC curves and AUC values.
+
+ROC curves were used because they show the trade-off between sensitivity and specificity across different classification thresholds. This makes them useful for comparing models more broadly than a single confusion matrix result.
+
+```{r}
+lg_probs %>% head(n=30)
+
+rf_probs <- predict(rf_model, newdata = test_sc1, type="prob")[, "TRUE"]
+rf_probs %>% head(n = 30)
+
+svm_probs <- predict(svm_model, newdata = test_svm, probability = TRUE)
+svm_probs <- attr(svm_probs, "probabilities")[, "TRUE"]
+svm_probs %>% head(n=30)
+
+library(pROC)
+
+roc_lg <- roc(test_sc1$top10, lg_probs)
+roc_rf <- roc(test_sc1$top10, rf_probs)
+roc_svm <- roc(test_svm$top10, svm_probs)
+
+auc(roc_lg)
+auc(roc_rf)
+auc(roc_svm)
+```
+
+The AUC values were:
+
+- Logistic Regression: 0.8834
+- Random Forest: 0.9335
+- SVM: 0.9460
+
+These results show that all three models performed well, since all AUC values are well above 0.5. However, there is a clear difference between the simpler baseline model and the more flexible nonlinear models.
+
+Logistic Regression achieved the lowest AUC. This is still a solid result, but it suggests that a simple linear decision boundary is not able to capture the full structure of the data.
+
+Random Forest improved the performance noticeably. Its AUC of 0.9335 shows that the model captures the relationship between the predictors and the target much better than Logistic Regression.
+
+SVM achieved the highest AUC, although the difference compared with Random Forest is quite small. This suggests that allowing a flexible nonlinear decision boundary is useful for this task.
+
+The ROC curves support the same conclusion visually.
+
+```{r}
+roc_df <- bind_rows(
+  data.frame(
+    specificity = roc_lg$specificities,
+    sensitivity = roc_lg$sensitivities,
+    model = "Logistic Regression"
+  ),
+  data.frame(
+    specificity = roc_rf$specificities,
+    sensitivity = roc_rf$sensitivities,
+    model = "Random Forest"
+  ),
+  data.frame(
+    specificity = roc_svm$specificities,
+    sensitivity = roc_svm$sensitivities,
+    model = "SVM"
+  )
+) %>%
+  mutate(
+    false_positive_rate = 1 - specificity
+  )
+
+ggplot(roc_df, aes(x = false_positive_rate, y = sensitivity, color = model)) +
+  geom_line(linewidth = 0.7) +
+  geom_abline(linetype = "dashed") +
+  labs(
+    title = "ROC Curves for Classification Models",
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity)",
+    color = "Model"
+  ) 
+```
+
+The SVM and Random Forest curves stay closer to the top-left corner of the plot, which indicates stronger classification performance. The Logistic Regression curve is clearly lower, which is consistent with the weaker AUC value.
+
+Overall, the comparison shows a clear trade-off between interpretability and predictive performance. Logistic Regression is the easiest model to interpret, but it gives the weakest predictive results. Random Forest and SVM both improve performance substantially. Among them, SVM achieved the best overall performance, while Random Forest remained very close and offered somewhat better interpretability through feature importance.

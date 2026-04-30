@@ -429,10 +429,6 @@ confusionMatrix(factor(lg_preds), factor(test_sc1$top10), positive = "TRUE")
 
 confusionMatrix(factor(lg_st_preds), factor(test_sc1$top10), positive = "TRUE")
 
-# However the 0.65 threshold showing a better specificity and balanced accuracy,
-# as mentioned before finding laps in top 10 is more important, so sensitivity playing a crucial role, and 
-# 0.5 threshold shows 92% against 84% of 0.6 threshold. So, the threshold of 0.5 is more suitable for the 
-# our goal.
 
 # Random Forest
 # Independence: repeated laps per driver is a limitation of the dataset
@@ -579,7 +575,8 @@ set.seed(13)
 
 svm_grid <- expand.grid(
   cost = seq(0.5, 10, 0.5),
-  gamma = seq(0.005, 1, 0.05)
+  gamma = seq(0.005, 1, 0.05),
+  kernel = c("radial", "linear", "polynomial", "sigmoid")
 )
 
 svm_grid
@@ -589,7 +586,7 @@ svm_results <- lapply(1:nrow(svm_grid), function(i) {
    model <- svm(
     top10 ~ SpeedI2 + TyreLife + Stint + SpeedI1 + SpeedFL + Compound,
     data = train_svm,
-    kernel = "radial",
+    kernel = svm_grid$kernel[i],
     cost = svm_grid$cost[i],
     gamma = svm_grid$gamma[i],
   )
@@ -608,6 +605,7 @@ svm_results <- lapply(1:nrow(svm_grid), function(i) {
   data.frame(
     cost = svm_grid$cost[i],
     gamma = svm_grid$gamma[i],
+    kernel = svm_grid$kernel[i],
     sensitivity = sensitivity,
     specificity = specificity,
     balanced_accuracy = (sensitivity + specificity) / 2
@@ -632,9 +630,9 @@ svm_model <- svm(
 # No check of the Feature Importance due to the radial kernel chosen
 # these option doesn't provide a clear data about the significance of the features
 
-svm_preds <- predict(svm_model, newdata = val_svm)
+svm_preds <- predict(svm_model, newdata = test_svm)
 
-confusionMatrix(svm_preds, val_svm$top10, positive = "TRUE")
+confusionMatrix(svm_preds, test_svm$top10, positive = "TRUE")
 
 # Model comparison
 # ROC
