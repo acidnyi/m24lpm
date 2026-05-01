@@ -2,6 +2,10 @@ rm(list= ls())
 getwd()
 setwd("git/m24lpm/")
 
+# Uncomment if you need to install
+# install.packages("tidyverse")
+# installed.packages("magrittr")
+
 library(tidyverse)
 library(magrittr)
 

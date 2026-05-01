@@ -1,3 +1,10 @@
+# Uncomment for instalation 
+#install.packages("shiny")
+#install.packages("caret")
+#install.packages("randomForest")
+#install.packages("pRoc")
+#install.packages("e1071")
+
 library(shiny)
 library(caret)
 library(randomForest)

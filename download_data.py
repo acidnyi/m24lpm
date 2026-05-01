@@ -6,11 +6,10 @@ YEAR = 2024
 EVENT = "Monaco"
 # Race
 SESSION = "R"
-OUTDIR = "data"
+OUTDIR = "data1"
 
 os.makedirs(OUTDIR, exist_ok=True)
 os.makedirs(os.path.join(OUTDIR, "cache"), exist_ok=True)
-os.makedirs(os.path.join(OUTDIR, "telemetry_raw"), exist_ok=True)
 
 # enable cache
 fastf1.Cache.enable_cache(os.path.join(OUTDIR, "cache"))

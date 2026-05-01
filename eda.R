@@ -2,6 +2,15 @@ rm(list= ls())
 getwd()
 setwd("git/m24lpm/")
 
+# Uncomment for installation
+#install.packages("tidyverse")
+#install.packages("magrittr")
+#install.packages("rsample")
+#install.packages("pROC")
+#install.packages("e1071")
+#install.packages("randomForest")
+#install.packages("caret")
+
 library(tidyverse)
 library(magrittr)
 library(rsample)
@@ -818,6 +827,8 @@ auc(roc_reduced_rf)
 # After the removing of the Compound model become worse.
 
 # Save models for shiny app
+dir.create("models")
+
 saveRDS(lg_model, "models/lg_model.rds")
 saveRDS(lg_step_model, "models/lg_step_model.rds")
 saveRDS(lg_reduced_model, "models/lg_reduced_model.rds")
